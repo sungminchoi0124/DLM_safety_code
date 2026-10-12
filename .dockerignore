@@ -1,4 +1,4 @@
-outputs/
+**/outputs/
 hf_models/
 .env
 .venv/

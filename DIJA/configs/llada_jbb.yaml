@@ -1,5 +1,5 @@
 # DIJA reproduction: JailbreakBench (100) x LLaDA-8B-Instruct x DIJA x no defense.
-# Relative paths are resolved against the repository root.
+# Relative paths are resolved against the DIJA/ folder (DLM_safety_code/DIJA).
 # Every key can be overridden on the command line (e.g. --seed 1).
 
 dija_root: third_party/DIJA

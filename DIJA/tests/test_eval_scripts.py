@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-from conftest import DIJA_ROOT, REPO_ROOT
+from conftest import DIJA_ROOT, PROJECT_DIR
 
 METRIC = DIJA_ROOT / "run_jailbreakbench" / "eval_metric"
 NO_KEYS = {k: v for k, v in os.environ.items()
@@ -21,7 +21,7 @@ FAKE = [
 
 def _run(*args):
     return subprocess.run([sys.executable, *map(str, args)], capture_output=True, text=True,
-                          env=NO_KEYS, cwd=str(REPO_ROOT), timeout=300)
+                          env=NO_KEYS, cwd=str(PROJECT_DIR), timeout=300)
 
 
 def test_asr_k_labels(tmp_path):
@@ -49,7 +49,7 @@ def test_asr_e_judge_model_string():
 def test_asr_e_launcher_requires_key(tmp_path):
     p = tmp_path / "eval.json"
     p.write_text(json.dumps(FAKE), encoding="utf-8")
-    r = _run(REPO_ROOT / "repro/dija/eval_asr_e.py", "--data-path", p, "--output-path", p)
+    r = _run(PROJECT_DIR / "eval_asr_e.py", "--data-path", p, "--output-path", p)
     assert r.returncode != 0
     assert "TOGETHER_API_KEY" in r.stderr + r.stdout
 

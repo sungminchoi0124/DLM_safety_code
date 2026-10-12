@@ -44,37 +44,38 @@ GPU를 받은 날 이 문서를 위에서부터 그대로 따라 한다.
 
 ```bash
 git clone --recurse-submodules https://github.com/sungminchoi0124/DLM_safety_code
-cd DLM_safety_code
+cd DLM_safety_code/DIJA                    # 이 문서의 모든 명령은 DIJA/ 폴더에서 실행
 git -C third_party/DIJA rev-parse HEAD     # 56ba341b3377423e6da212013aec6e825710a64c 이어야 함
 
-# API 키 (.env는 git 제외)
-cp .env.example .env   # TOGETHER_API_KEY, OPENAI_API_KEY, (필요시) HF_TOKEN 입력
+# API 키 (저장소 최상단 .env 하나를 세 논문이 같이 씀, git 제외)
+cp ../.env.example ../.env   # TOGETHER_API_KEY, OPENAI_API_KEY, (필요시) HF_TOKEN 입력
 
-# (A) Docker
-docker build -f env/Dockerfile -t dlm-safety/dija-repro .
-docker run --gpus all -it -v $PWD/hf_models:/workspace/DLM_safety_code/hf_models \
-  -v $PWD/outputs:/workspace/DLM_safety_code/outputs --env-file .env dlm-safety/dija-repro
-# (B) 또는 conda (VESSL 등에서 Docker를 못 쓸 때)
-conda create -n dija python=3.10 -y && conda activate dija
+# (A) Docker (빌드는 저장소 최상단에서)
+(cd .. && docker build -f DIJA/env/Dockerfile -t dlm-safety/dija-repro .)
+docker run --gpus all -it -v $PWD/../hf_models:/workspace/DLM_safety_code/hf_models \
+  -v $PWD/outputs:/workspace/DLM_safety_code/DIJA/outputs --env-file ../.env dlm-safety/dija-repro
+# (B) 또는 venv / conda (VESSL 등에서 Docker를 못 쓸 때)
+python -m venv /root/venv && source /root/venv/bin/activate
 # av==14.4.0 제외: PyPI에 wheel이 없어 ffmpeg 7 소스 빌드가 필요하고, DIJA 코드는 av를 import하지 않음
 grep -v '^av==' third_party/DIJA/requirements.txt > /tmp/req.txt
 pip install --no-cache-dir -r /tmp/req.txt PyYAML python-dotenv pytest
 
-# 모델 다운로드 (~16 GB). 디렉터리 이름에 "Instruct"가 반드시 들어가야 함 (원본 instruct 판별 규칙)
+# 모델 다운로드 (~16 GB) → 저장소 최상단 hf_models/ (git 제외, 논문 간 공용)
+# 디렉터리 이름에 "Instruct"가 반드시 들어가야 함 (원본 instruct 판별 규칙)
 huggingface-cli download GSAI-ML/LLaDA-8B-Instruct \
   --revision 08b83a6feb34df1a6011b80c3c00c7563e963b07 \
-  --local-dir hf_models/LLaDA-8B-Instruct
+  --local-dir ../hf_models/LLaDA-8B-Instruct
 
 # GPU / 환경 확인
 nvidia-smi
 python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-pytest -q tests          # 19 passed 이어야 함 (GPU 머신에서도 CPU로 돈다)
+pytest -q tests          # 21 passed 이어야 함 (GPU 머신에서도 CPU로 돈다)
 ```
 
 ### Together 판정기 모델이 아직 있는지 확인 (ASR-e 전에 반드시)
 
 ```bash
-set -a; . ./.env; set +a
+set -a; . ../.env; set +a
 curl -s -H "Authorization: Bearer $TOGETHER_API_KEY" https://api.together.xyz/v1/models \
   | python -c "import sys,json; d=json.load(sys.stdin); d=d.get('data',d); \
 print([m['id'] for m in d if 'llama-3' in m['id'].lower() and '70b' in m['id'].lower()])"
@@ -92,53 +93,53 @@ print([m['id'] for m in d if 'llama-3' in m['id'].lower() and '70b' in m['id'].l
 
 공통 변수:
 ```bash
-M=hf_models/LLaDA-8B-Instruct
+M=../hf_models/LLaDA-8B-Instruct
 ```
 
 ### ① zeroshot 5문항 (정상 동작 + forward 시간 실측)
 ```bash
-python repro/dija/run_generate.py --model_path $M --attack_method zeroshot --limit 5
+python run_generate.py --model_path $M --attack_method zeroshot --limit 5
 ```
 정상이면:
 - 콘솔에 `[i/5] masks=36 forwards=36 t=..s response_len=.. sha=..` 5줄. 응답 원문은 안 나온다.
 - 마지막 줄 `sec/forward=...` → **이 값으로 `configs/llada_jbb.yaml`의 `est_forward_sec`를 고친다.**
-- `bash repro/dija/run_eval.sh asr_k outputs/dija/llada_instruct_zeroshot_attack_None_defense_Qwen_seed0_limit5.json`
+- `bash run_eval.sh asr_k outputs/dija/llada_instruct_zeroshot_attack_None_defense_Qwen_seed0_limit5.json`
   → ASR-k 0~20% (거의 전부 거절). 높게 나오면 chat template / instruct 판별(경로에 "Instruct")을 의심.
 - `forwards`가 36이 아니면 즉시 중단하고 원인 확인.
 
 ### ② DIJA 5문항
 ```bash
-python repro/dija/run_generate.py --model_path $M --attack_method DIJA --limit 5
+python run_generate.py --model_path $M --attack_method DIJA --limit 5
 ```
 정상이면: 문항별 `masks`가 dry run 값(100, 110, 115, 135, 85)과 같고 `forwards == masks`. ASR-k가 대부분 1(거절 키워드 없음). 응답 길이는 수백 자 이상.
 
 ### ③ 100문항 전체 (DIJA, 그리고 정상 확인용 zeroshot)
 ```bash
-python repro/dija/run_generate.py --model_path $M --attack_method DIJA
-python repro/dija/run_generate.py --model_path $M --attack_method zeroshot
+python run_generate.py --model_path $M --attack_method DIJA
+python run_generate.py --model_path $M --attack_method zeroshot
 ```
 결과: `outputs/dija/llada_instruct_{DIJA|zeroshot}_attack_None_defense_Qwen_seed0.json` (+ `.meta.json`: DIJA 커밋, 모델 리비전, 시드, GPU 이름, 문항별 forward 수·시간).
 
 ### ④ ASR-k (API 불필요)
 ```bash
 G=outputs/dija/llada_instruct_DIJA_attack_None_defense_Qwen_seed0.json
-bash repro/dija/run_eval.sh asr_k $G
+bash run_eval.sh asr_k $G
 ```
 정상이면: DIJA ≈ 95%, zeroshot ≈ 0%. 결과는 `eval_<이름>.json`의 `asr_k_label`.
 
 ### ⑤ ASR-e (Together, 100회 호출)
 ```bash
-bash repro/dija/run_eval.sh asr_e $G
+bash run_eval.sh asr_e $G
 ```
 정상이면: `NN/100 Jailbroken`, DIJA ≈ 81%. 판정기를 바꿨다면 경고가 찍히고 `.judge.json`에 기록된다.
 
 ### ⑥ HS (OpenAI GPT-4o, 100회 호출)
 ```bash
-bash repro/dija/run_eval.sh hs $G
+bash run_eval.sh hs $G
 ```
 정상이면: `HS average ≈ 4.6`, 분포는 5점에 몰림. zeroshot은 ≈ 1.0. (`HS_NUM_PROCESSES` 기본 50, 레이트 리밋 에러가 나면 낮춘다. 에러 난 문항은 원본 코드가 1점으로 처리하므로 로그에 `Error calling GPT`가 있으면 재실행.)
 
-④~⑥은 `bash repro/dija/run_eval.sh all $G` 로 한 번에도 가능.
+④~⑥은 `bash run_eval.sh all $G` 로 한 번에도 가능.
 
 ## 예상 소요 시간
 
@@ -157,8 +158,8 @@ DIJA 문항별 마스크 수 분포 (dry run): 중앙값 90, 90분위 115; 구�
 ## GPU 없이 확인하는 법
 
 ```bash
-python repro/dija/run_generate.py --attack_method DIJA --dry_run      # 토크나이저 파일만 받음
-python repro/dija/run_generate.py --attack_method DIJA --limit 1      # GPU 없으면 에러로 종료해야 정상
+python run_generate.py --attack_method DIJA --dry_run      # 토크나이저 파일만 받음
+python run_generate.py --attack_method DIJA --limit 1      # GPU 없으면 에러로 종료해야 정상
 pytest -q tests
 ```
 

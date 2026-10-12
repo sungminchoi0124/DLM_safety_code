@@ -1,7 +1,7 @@
 # GPU image for the DIJA reproduction: CUDA 12.4 + Python 3.10 + DIJA's pinned requirements.txt
-# Build from the repo root (submodule must be checked out):
+# Build from the repo root (DLM_safety_code/, submodule must be checked out):
 #   git submodule update --init
-#   docker build -f env/Dockerfile -t dlm-safety/dija-repro .
+#   docker build -f DIJA/env/Dockerfile -t dlm-safety/dija-repro .
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -18,7 +18,7 @@ WORKDIR /workspace/DLM_safety_code
 
 # Original requirements (torch==2.6.0 -> cu124 wheels on Linux).
 # av==14.4.0 is excluded: PyPI has no wheel for it (source build needs ffmpeg 7) and DIJA never imports it.
-COPY third_party/DIJA/requirements.txt /tmp/dija-requirements.txt
+COPY DIJA/third_party/DIJA/requirements.txt /tmp/dija-requirements.txt
 RUN python -m pip install --upgrade pip \
     && grep -v '^av==' /tmp/dija-requirements.txt > /tmp/req.txt \
     && python -m pip install -r /tmp/req.txt \
@@ -26,5 +26,5 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 
-# Weights are NOT baked in. Mount them: -v /data/hf_models:/workspace/DLM_safety_code/hf_models
+# Weights are NOT baked in. Mount them: -v <host>/hf_models:/workspace/DLM_safety_code/hf_models
 CMD ["bash"]

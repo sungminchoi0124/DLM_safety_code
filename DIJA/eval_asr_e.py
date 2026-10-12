@@ -13,7 +13,7 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_DIR = Path(__file__).resolve().parent  # DLM_safety_code/DIJA
 ORIGINAL_JUDGE = "together_ai/meta-llama/Llama-3-70b-chat-hf"
 
 
@@ -29,7 +29,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="ASR-e (JailbreakBench Llama-3-70B judge via Together)")
     p.add_argument("--data-path", required=True)
     p.add_argument("--output-path", required=True)
-    p.add_argument("--dija_root", default=str(REPO_ROOT / "third_party" / "DIJA"))
+    p.add_argument("--dija_root", default=str(PROJECT_DIR / "third_party" / "DIJA"))
     args = p.parse_args(argv)
 
     mod = load_original(args.dija_root)

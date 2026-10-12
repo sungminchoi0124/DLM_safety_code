@@ -31,8 +31,8 @@ import numpy as np
 import torch
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = REPO_ROOT / "repro" / "dija" / "configs" / "llada_jbb.yaml"
+PROJECT_DIR = Path(__file__).resolve().parent  # DLM_safety_code/DIJA
+DEFAULT_CONFIG = PROJECT_DIR / "configs" / "llada_jbb.yaml"
 TOKENIZER_PATTERNS = ["tokenizer*", "special_tokens_map.json", "config.json", "*.py"]
 
 log = logging.getLogger("dija_repro")
@@ -88,7 +88,7 @@ def resolve(path):
     if path is None:
         return None
     p = Path(path)
-    return p if p.is_absolute() else REPO_ROOT / p
+    return p if p.is_absolute() else PROJECT_DIR / p
 
 
 def build_parser():
@@ -378,8 +378,8 @@ def main(argv=None):
         "run_name": name,
         "started_utc": started,
         "finished_utc": datetime.now(timezone.utc).isoformat(),
-        "team_repo_commit": git_commit(REPO_ROOT),
-        "team_repo_dirty": git_dirty(REPO_ROOT),
+        "team_repo_commit": git_commit(PROJECT_DIR),
+        "team_repo_dirty": git_dirty(PROJECT_DIR),
         "dija_commit": git_commit(dija_root),
         "dija_commit_expected": cfg.get("dija_commit"),
         "dija_dirty": git_dirty(dija_root),

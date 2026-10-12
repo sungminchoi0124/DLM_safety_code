@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 import run_generate as rg
-from conftest import MASK_ID, REPO_ROOT
+from conftest import MASK_ID, PROJECT_DIR
 
-PROMPTS = REPO_ROOT / "third_party/DIJA/run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json"
+PROMPTS = PROJECT_DIR / "third_party/DIJA/run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json"
 
 
 @pytest.fixture(scope="module")

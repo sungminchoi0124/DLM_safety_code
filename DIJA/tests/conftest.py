@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DIJA_ROOT = REPO_ROOT / "third_party" / "DIJA"
-sys.path.insert(0, str(REPO_ROOT / "repro" / "dija"))
+PROJECT_DIR = Path(__file__).resolve().parents[1]  # DLM_safety_code/DIJA
+DIJA_ROOT = PROJECT_DIR / "third_party" / "DIJA"
+sys.path.insert(0, str(PROJECT_DIR))
 
 MASK_ID = 126336
 MASK_TOKEN = "<|mdm_mask|>"
