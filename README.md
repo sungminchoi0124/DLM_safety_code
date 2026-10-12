@@ -6,7 +6,7 @@
 
 | 폴더 | 논문 | 담당 | 상태 |
 |---|---|---|---|
-| [`DIJA/`](DIJA/README.md) | DIJA (ICLR 2026, arXiv 2507.11097) — JailbreakBench × LLaDA-8B-Instruct | | 실행 준비 완료, GPU 실행 중 |
+| [`DIJA/`](DIJA/README.md) | DIJA (ICLR 2026, arXiv 2507.11097) — JailbreakBench × LLaDA-8B-Instruct | | 5문항 확인 완료 (RTX 3090), 100문항 실행 대기 |
 | `<논문2>/` | | | |
 | `<논문3>/` | | | |
 
@@ -41,8 +41,40 @@ git -C <논문>/third_party/<원본> checkout <고정할 커밋>
 git add .gitmodules <논문> && git commit -m "Add <논문> reproduction scaffold"
 ```
 
-## GPU (VESSL)
+## GPU 환경 (VESSL) — DIJA 셋업 기준, 팀원 참고용
 
-- 논문(사람)마다 Workspace를 따로 만든다. GPU 1장 = Workspace 1개.
-- 클론 위치는 `/root/DLM_safety_code`, 모델은 `/root/DLM_safety_code/hf_models/`에 둔다 (`/root`만 재시작 후 유지).
-- 다 쓰면 Workspace를 Stop한다 (켜져 있는 동안 과금).
+### Workspace 설정
+| 항목 | 값 | 비고 |
+|---|---|---|
+| 리소스 | `gpu-1` 계열 | 클러스터의 GPU는 전부 **RTX 3090 (24GB)**. 1장이면 8B 모델(bf16 약 16GB) 충분. `gpu-2` 이상은 원본 코드가 1장만 써서 낭비 |
+| 이미지 | 관리형 `PyTorch 2.3.1 (CUDA 12.1)` | requirements 설치 시 torch 2.6.0+cu124로 바뀜. 드라이버 550.107.02라 문제없음 |
+| 디스크 | **50~60 GiB** | 기본 15GiB는 부족 (모델 16GB + 패키지 약 10GB). `/root`에 붙음 |
+| 포트 | 8888 jupyter, 22 ssh | 기본값 그대로 |
+| 노드 | 아무거나 하나 | 논문(사람)마다 Workspace 따로. 한 재현 안에서는 가능하면 같은 노드 |
+
+확인된 사양: Python 3.10.12, RAM 503GB, CUDA 12.4 드라이버.
+
+### 접속
+Workspace가 Running이 되면 **Jupyter → Terminal**에서 명령을 실행한다 (가장 쉬움). SSH를 쓰려면 VESSL 계정에 공개키를 등록한다.
+
+### 처음 한 번
+```bash
+cd /root
+git clone --recurse-submodules https://github.com/sungminchoi0124/DLM_safety_code
+cd DLM_safety_code
+python -m venv /root/venv && source /root/venv/bin/activate   # 패키지도 /root 안에 둬야 재시작 후 남음
+pip install --upgrade pip
+# 이후 의존성 설치·모델 다운로드는 논문 폴더 README 참고 (예: DIJA/README.md)
+cp .env.example .env   # API 키 입력 (git 제외)
+```
+- 모델은 `/root/DLM_safety_code/hf_models/`에 받는다 (논문 간 공용, git 제외). 16GB급은 `nohup ... &`로 백그라운드 다운로드.
+- `pip install`은 `--no-cache-dir`을 붙여 디스크를 아낀다.
+
+### 일시정지 / 재개
+- **Stop 전:** `jobs`, `nvidia-smi`로 돌고 있는 작업이 없는지 확인 (Stop하면 프로세스는 끊김).
+- **Stop:** VESSL 웹 → Workspace → Stop. `/root` 아래(코드, venv, 모델, outputs)는 남고, `/root` 밖에 설치한 것은 사라짐.
+- **재개:** Start → Terminal에서
+  ```bash
+  cd /root/DLM_safety_code && source /root/venv/bin/activate && git pull
+  ```
+- 켜져 있는 동안 과금되므로 다 쓰면 Stop.
