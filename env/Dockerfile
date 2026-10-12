@@ -16,10 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /workspace/DLM_safety_code
 
-# Original requirements (torch==2.6.0 -> cu124 wheels on Linux)
+# Original requirements (torch==2.6.0 -> cu124 wheels on Linux).
+# av==14.4.0 is excluded: PyPI has no wheel for it (source build needs ffmpeg 7) and DIJA never imports it.
 COPY third_party/DIJA/requirements.txt /tmp/dija-requirements.txt
 RUN python -m pip install --upgrade pip \
-    && python -m pip install -r /tmp/dija-requirements.txt \
+    && grep -v '^av==' /tmp/dija-requirements.txt > /tmp/req.txt \
+    && python -m pip install -r /tmp/req.txt \
     && python -m pip install PyYAML python-dotenv pytest
 
 COPY . .

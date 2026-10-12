@@ -56,7 +56,9 @@ docker run --gpus all -it -v $PWD/hf_models:/workspace/DLM_safety_code/hf_models
   -v $PWD/outputs:/workspace/DLM_safety_code/outputs --env-file .env dlm-safety/dija-repro
 # (B) 또는 conda (VESSL 등에서 Docker를 못 쓸 때)
 conda create -n dija python=3.10 -y && conda activate dija
-pip install -r third_party/DIJA/requirements.txt PyYAML python-dotenv pytest
+# av==14.4.0 제외: PyPI에 wheel이 없어 ffmpeg 7 소스 빌드가 필요하고, DIJA 코드는 av를 import하지 않음
+grep -v '^av==' third_party/DIJA/requirements.txt > /tmp/req.txt
+pip install --no-cache-dir -r /tmp/req.txt PyYAML python-dotenv pytest
 
 # 모델 다운로드 (~16 GB). 디렉터리 이름에 "Instruct"가 반드시 들어가야 함 (원본 instruct 판별 규칙)
 huggingface-cli download GSAI-ML/LLaDA-8B-Instruct \
