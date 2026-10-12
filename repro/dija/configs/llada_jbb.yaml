@@ -16,7 +16,8 @@ model_revision: 08b83a6feb34df1a6011b80c3c00c7563e963b07
 
 # Public interleaved mask-text prompts shipped with DIJA. NEVER regenerate (run_refine.sh is forbidden).
 prompt_file: third_party/DIJA/run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json
-prompt_file_sha256: c52f40e8fc0e3396a6518d9e1ceff233b45ddf14c791c44922a9d27f6b7d185b
+# SHA-256 of the file as published at the pinned commit (LF line endings; CRLF is normalized before hashing)
+prompt_file_sha256: 534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95
 prompt_version: Qwen
 
 output_dir: outputs/dija

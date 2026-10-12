@@ -4,7 +4,7 @@ GPU를 받은 날 이 문서를 위에서부터 그대로 따라 한다.
 
 - 원본 코드: `third_party/DIJA` (submodule, 커밋 `56ba341b3377423e6da212013aec6e825710a64c`). **수정 금지.** 현재 패치 없음 (`patches/` 없음).
 - 공격 프롬프트: 공개 파일 `run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json`만 사용
-  - SHA-256 `c52f40e8fc0e3396a6518d9e1ceff233b45ddf14c791c44922a9d27f6b7d185b` (래퍼가 실행 시마다 검사, 다르면 중단)
+  - SHA-256 `534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95` (GitHub 원본 = LF 기준. 래퍼가 실행 시마다 CRLF→LF 정규화 후 검사, 다르면 중단. Windows git의 autocrlf로 줄바꿈만 바뀐 사본도 통과)
   - **`refine_prompt/run_refine.sh`는 절대 실행하지 않는다** (새 공격 프롬프트 생성 + 이 파일을 덮어씀)
 - 모델: `GSAI-ML/LLaDA-8B-Instruct` 리비전 `08b83a6feb34df1a6011b80c3c00c7563e963b07` (약 16.0 GB)
 - 유해 출력은 `outputs/`에만 저장된다 (git 제외). 콘솔에는 응답 길이와 해시만 찍힌다.

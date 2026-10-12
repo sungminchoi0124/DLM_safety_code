@@ -63,11 +63,15 @@ def text_digest(text):
 
 
 def sha256_file(path):
-    h = hashlib.sha256()
+    """SHA-256 of the file with CRLF normalized to LF.
+
+    Git on Windows (core.autocrlf=true) checks text files out with CRLF, which changes the raw
+    bytes but not the JSON content. Normalizing gives the hash of the file as published on GitHub
+    on every OS.
+    """
     with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+        data = f.read()
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def set_seed(seed):

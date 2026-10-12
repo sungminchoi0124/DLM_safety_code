@@ -46,6 +46,19 @@ def test_tokens_per_step_other_than_one_rejected():
         rg.load_config(["--tokens_per_step", "2"])
 
 
+def test_prompt_hash_ignores_crlf(tmp_path):
+    lf, crlf = tmp_path / "lf.json", tmp_path / "crlf.json"
+    lf.write_bytes(b'[\n  {"a": 1}\n]\n')
+    crlf.write_bytes(b'[\r\n  {"a": 1}\r\n]\r\n')
+    assert rg.sha256_file(lf) == rg.sha256_file(crlf)
+
+
+def test_public_prompt_file_matches_config_hash():
+    cfg = rg.load_config([])
+    _, digest = rg.load_items(cfg)
+    assert digest == "534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95"
+
+
 def test_prompt_file_hash_checked(tmp_path):
     bad = tmp_path / "p.json"
     bad.write_text("[]", encoding="utf-8")
