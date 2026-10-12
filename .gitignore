@@ -218,3 +218,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- DLM_safety_code ----
+# generated results (may contain harmful model outputs) - never commit
+outputs/*
+!outputs/.gitkeep
+*.jsonl
+
+# secrets
+.env
+
+# model weights / caches
+hf_models/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# env/ holds the Dockerfile and requirements (template above ignores env/)
+!env/

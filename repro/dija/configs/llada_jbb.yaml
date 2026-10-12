@@ -1,0 +1,41 @@
+# DIJA reproduction: JailbreakBench (100) x LLaDA-8B-Instruct x DIJA x no defense.
+# Relative paths are resolved against the repository root.
+# Every key can be overridden on the command line (e.g. --seed 1).
+
+dija_root: third_party/DIJA
+dija_commit: 56ba341b3377423e6da212013aec6e825710a64c
+
+# Local directory (e.g. hf_models/LLaDA-8B-Instruct) or HF repo id.
+# The original code decides "instruct" mode by checking that the path contains
+# "Instruct" (or "1.5"), so keep "Instruct" in the local directory name.
+model_path: GSAI-ML/LLaDA-8B-Instruct
+# HF commit hash of the model (main as of 2026-10-04, last modified 2025-10-21).
+# The revision the paper used is unknown (see README "미확인").
+# For a local dir it is checked against .cache/huggingface/download/*.metadata.
+model_revision: 08b83a6feb34df1a6011b80c3c00c7563e963b07
+
+# Public interleaved mask-text prompts shipped with DIJA. NEVER regenerate (run_refine.sh is forbidden).
+prompt_file: third_party/DIJA/run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json
+prompt_file_sha256: c52f40e8fc0e3396a6518d9e1ceff233b45ddf14c791c44922a9d27f6b7d185b
+prompt_version: Qwen
+
+output_dir: outputs/dija
+
+attack_method: DIJA        # DIJA | zeroshot
+defense_method: None       # reproduction scope: no defense only
+seed: 0
+
+# Values eval_jailbreakbench.sh passes for llada_instruct.
+# steps / gen_length are NOT used by generate_llada (it only fills masks already in the prompt).
+# mask_counts IS used: prompts without any mask (zeroshot) get 36 masks appended.
+mask_id: 126336
+mask_counts: 36
+steps: 128
+gen_length: 128
+
+# Unused by the original code path; only 1 is supported (original behaviour).
+tokens_per_step: 1
+
+# Rough A100-80GB estimate for one LLaDA-8B bf16 forward (~300 tokens). NOT measured.
+# Replace with the value measured in README step 1.
+est_forward_sec: 0.05

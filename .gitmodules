@@ -1,0 +1,3 @@
+[submodule "third_party/DIJA"]
+	path = third_party/DIJA
+	url = https://github.com/ZichenWen1/DIJA

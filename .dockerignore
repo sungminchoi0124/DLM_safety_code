@@ -1,0 +1,5 @@
+outputs/
+hf_models/
+.env
+.venv/
+**/__pycache__/
