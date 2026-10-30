@@ -9,6 +9,7 @@ therefore a re-combination of the two runs' verdicts, no extra GPU.
 
     python check_pad.py tables                       # after eval_asr.py on the three runs (seed 0)
     python check_pad.py tables --seed 1 --suffix __fig11
+    python check_pad.py seeds --seeds 0 1 2          # mean ASR per row, compared with the paper
     python check_pad.py compare eval_A.json eval_B.json   # same generations, two judge variants / repeats
 
 Prints numbers only (no prompt or response text).
@@ -16,6 +17,7 @@ Prints numbers only (no prompt or response text).
 
 import argparse
 import json
+import statistics
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -156,6 +158,31 @@ def tables(args):
     return out
 
 
+def seeds(args):
+    """Mean ASR over seeds per row; the pass criterion is applied to the mean, not to one lucky seed."""
+    d = Path(args.dir)
+    out = {"seeds": args.seeds, "suffix": args.suffix, "rows": {}}
+    print(f"PAD x {args.prompt_set}, seeds {args.seeds}, judge files eval_*{args.suffix}.json\n")
+    print(f"{'row':<12}{'mean':>8}{'sd':>7}{'paper':>8}{'diff':>8}  {'':5} per seed")
+    for k, target, _ in RUN_TARGETS:
+        runs = {s: load_run(d, args.prompt_set, k, args.steps, s, args.suffix, required=False) for s in args.seeds}
+        vals = {s: asr(r["v"])[0] for s, r in runs.items() if r}
+        if not vals:
+            continue
+        missing = [s for s in args.seeds if s not in vals]
+        mean = round(statistics.mean(vals.values()), 2)
+        sd = round(statistics.stdev(vals.values()), 2) if len(vals) > 1 else None
+        # a partial row must not read as the full-seed verdict
+        st = status(mean, target) if not missing else "PARTIAL"
+        out["rows"][k] = {"mean": mean, "sd": sd, "paper": target, "status": st, "per_seed": vals, "missing": missing}
+        print(f"{k:<12}{mean:>8.2f}{sd if sd is not None else '-':>7}{target:>8.2f}{mean - target:>+8.2f}  "
+              f"{st:7} {vals}")
+    path = d / f"check_pad_{args.prompt_set}_seeds{args.suffix}.json"
+    path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    print(f"\nsaved -> {path}")
+    return out
+
+
 def compare(args):
     a = json.loads(Path(args.a).read_text(encoding="utf-8"))
     b = json.loads(Path(args.b).read_text(encoding="utf-8"))
@@ -182,11 +209,17 @@ def main(argv=None):
     t.add_argument("--steps", type=int, default=64)
     t.add_argument("--seed", type=int, default=0)
     t.add_argument("--suffix", default="", help="eval file variant, e.g. __fig11 or __qvanilla")
+    s = sub.add_parser("seeds")
+    s.add_argument("--dir", default=str(PROJECT_DIR / "outputs" / "diffuguard"))
+    s.add_argument("--prompt_set", default="advbench")
+    s.add_argument("--steps", type=int, default=64)
+    s.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    s.add_argument("--suffix", default="")
     c = sub.add_parser("compare")
     c.add_argument("a")
     c.add_argument("b")
     args = p.parse_args(argv)
-    return tables(args) if args.cmd == "tables" else compare(args)
+    return {"tables": tables, "seeds": seeds, "compare": compare}[args.cmd](args)
 
 
 if __name__ == "__main__":

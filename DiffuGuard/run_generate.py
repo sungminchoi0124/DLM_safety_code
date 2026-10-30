@@ -396,6 +396,17 @@ def run_generation(cfg, jbl, items, tokenizer, model):
     # single block that block is the whole sequence
     score_logits = g["fill_all_masks"] and g["gen_length"] // g["block_length"] == 1
     logit_state = {"gen_start": None, "score": None}
+    # the original prints SD with 3 decimals only; 0.0996 prints as 0.100, so keep the value it compares to lambda
+    sd_state = {"sd": None}
+    original_cosine_distance = gfl.cosine_distance
+
+    def _record_sd(a, b):
+        dist = original_cosine_distance(a, b)
+        if sd_state["sd"] is None:  # first block, same as parse_audit
+            sd_state["sd"] = dist
+        return dist
+
+    gfl.cosine_distance = _record_sd
 
     def _count(_module, _inputs):
         n_forward[0] += 1
@@ -442,8 +453,12 @@ def run_generation(cfg, jbl, items, tokenizer, model):
                         baseline_hidden = jbl.compute_baseline_hidden(
                             vanilla_text=p["vanilla_text"], tokenizer=tokenizer, model=model,
                             is_instruct=is_instruct, system_prompt=None, debug_print=False)
+                        if baseline_hidden is None:
+                            # the original swallows the error and audits with logits only: not the SD audit
+                            raise SystemExit(f"item {idx}: baseline hidden state failed; aborting the audit run.")
                     n_before = n_forward[0]
                     logit_state.update(gen_start=n_before, score=None)
+                    sd_state["sd"] = None
                     response = jbl.generate_response(p["vanilla_prompt"], p["prompt"], tokenizer, model, args,
                                                      baseline_hidden=baseline_hidden, system_prompt=None)
                     logit_state["gen_start"] = None
@@ -453,6 +468,8 @@ def run_generation(cfg, jbl, items, tokenizer, model):
                 dt = time.perf_counter() - t0
 
                 audit = parse_audit(debug.getvalue())
+                if sd_state["sd"] is not None:
+                    audit["audit_score"] = sd_state["sd"]
                 d = text_digest(response)
                 rec_meta = {"idx": idx, "n_forward": n_forward[0], "gen_forwards": gen_forwards,
                             "seconds": round(dt, 3), "baseline_hidden_ok": baseline_hidden is not None,
@@ -489,6 +506,7 @@ def run_generation(cfg, jbl, items, tokenizer, model):
                     rec["prompt"] = p["vanilla_text"]
                 results.append(rec)
     finally:
+        gfl.cosine_distance = original_cosine_distance
         handle.remove()
         if score_handle is not None:
             score_handle.remove()

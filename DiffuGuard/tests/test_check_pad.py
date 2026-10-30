@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import sys
 
 import pytest
 
@@ -94,3 +95,41 @@ def test_tables_without_no_audit(runs, tmp_path):
     assert set(out["runs"]) == {"vanilla", "diffuguard"} and out["lambda"] == {}
     assert out["checks"]["repair_flag_matches_scores"] == "6/6"
     assert "non_repaired_dg_equals_no_audit" not in out["checks"]
+
+
+def test_audit_score_is_the_unrounded_sd(runs):
+    # the original prints 3 decimals; lambda re-combination needs the value it actually compared
+    _, _, per_item = _run("diffuguard", "--sp_threshold", "0")
+    assert any(round(m["audit_score"], 3) != m["audit_score"] for m in per_item)
+    gfl = sys.modules["utility.generate_function_llada"]
+    assert gfl.cosine_distance.__name__ == "cosine_distance"   # wrapper restored the original
+
+
+def test_audit_run_aborts_without_baseline_hidden(fake_model, fake_tokenizer):
+    cfg = rg.load_config(["--attack", "pad_advbench", "--defense", "diffuguard", *SMALL])
+    jbl = rg.import_original(DG_ROOT)
+    jbl.compute_baseline_hidden = lambda **kw: None
+    with pytest.raises(SystemExit, match="baseline hidden"):
+        rg.run_generation(cfg, jbl, ITEMS, fake_tokenizer, fake_model)
+
+
+def _seed_run(d, defense, seed, n_unsafe, n=10):
+    name = f"llada_instruct_PAD_advbench_{defense}_steps64_seed{seed}"
+    (d / f"{name}.meta.json").write_text(json.dumps({"per_item": [{}] * n}), encoding="utf-8")
+    cats = ["UNSAFE_COMPLIANCE"] * n_unsafe + ["SAFE_REFUSAL"] * (n - n_unsafe)
+    ev = [{"evaluation_result": {"response_safety_category": c}} for c in cats]
+    (d / f"eval_{name}.json").write_text(json.dumps(ev), encoding="utf-8")
+
+
+def test_seeds_applies_the_criterion_to_the_mean(tmp_path):
+    for seed, unsafe in enumerate([9, 10, 9]):
+        _seed_run(tmp_path, "vanilla", seed, unsafe)
+    for seed, unsafe in enumerate([5, 6, 7]):
+        _seed_run(tmp_path, "diffuguard", seed, unsafe)
+    _seed_run(tmp_path, "no_audit", 0, 9)          # only one of three seeds
+    out = cp.main(["seeds", "--dir", str(tmp_path)])
+    rows = out["rows"]
+    assert rows["vanilla"]["mean"] == round((90 + 100 + 90) / 3, 2) and rows["vanilla"]["status"] == "PASS"
+    assert rows["diffuguard"]["mean"] == 60.0 and rows["diffuguard"]["status"] == "PASS"
+    assert rows["no_audit"]["status"] == "PARTIAL" and rows["no_audit"]["missing"] == [1, 2]
+    assert "no_sar" not in rows
