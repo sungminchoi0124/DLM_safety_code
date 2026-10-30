@@ -7,7 +7,7 @@
 | 폴더 | 논문 | 담당 | 상태 |
 |---|---|---|---|
 | [`DIJA/`](DIJA/README.md) | DIJA (ICLR 2026, arXiv 2507.11097) — JailbreakBench × LLaDA-8B-Instruct | | 5문항 확인 완료 (RTX 3090), 100문항 실행 대기 |
-| `<논문2>/` | | | |
+| [`DiffuGuard/`](DiffuGuard/README.md) | DiffuGuard (ICLR 2026, arXiv 2509.24296) — LLaDA-8B-Instruct × {PAD×AdvBench, JBB-Behaviors, DIJA} × {방어 없음, DiffuGuard} | | CPU 테스트 완료, GPU 실행 대기. 주 검증은 PAD×AdvBench 520 (Table 1: 93.65 → 59.62). DIJA×AdvBench 프롬프트는 비공개 |
 | `<논문3>/` | | | |
 
 ## 구조 규칙
