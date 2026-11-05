@@ -1,0 +1,28 @@
+{
+  "experiment": {
+    "upstream": "https://github.com/NVlabs/Fast-dLLM",
+    "commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+    "model": "GSAI-ML/LLaDA-8B-Instruct",
+    "task": "gsm8k",
+    "num_fewshot": 5,
+    "batch_size": 1,
+    "gpu": "NVIDIA GeForce RTX 3090"
+  },
+  "limit_100": {
+    "baseline": {"flexible": 0.82, "strict": 0.37, "tokens_per_second": 2.247575521469116, "total_nfe": 25600},
+    "prefix_cache": {"flexible": 0.81, "strict": 0.41, "tokens_per_second": 10.721680641174316, "total_nfe": 25600},
+    "parallel": {"flexible": 0.82, "strict": 0.39, "tokens_per_second": 7.1419806480407715, "total_nfe": 7973},
+    "combo": {"flexible": 0.81, "strict": 0.42, "tokens_per_second": 24.64, "total_nfe": 8228}
+  },
+  "combo_full": {
+    "samples": 1319,
+    "flexible": 0.775587566338135,
+    "strict": 0.3821076573161486,
+    "generated_tokens": 308374,
+    "generation_seconds": 12264.80533027649,
+    "tokens_per_second": 25.14299964904785,
+    "total_nfe": 106914,
+    "evaluation_seconds": 12293.548039871035,
+    "exit_code": 0
+  }
+}
