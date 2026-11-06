@@ -1,0 +1,8 @@
+# DIJA x JailbreakBench public prompts (100). NEVER regenerate (run_refine.sh is forbidden).
+data:
+  set: dija
+  id_list: data/ids/dija_100.txt
+  prompt_file: ../DIJA/third_party/DIJA/run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json
+  prompt_file_sha256: 534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95
+  attack_method: DIJA
+  pair_key: jbb_behavior_index
