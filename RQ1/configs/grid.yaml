@@ -1,0 +1,13 @@
+# Experiment axes -> manifest.csv (56 rows). Owner: T3-3 / T3-5 (3번).
+axes:
+  speed_level: [1, 2, 4, 8]
+  defense: [diffuguard, none]
+sets:
+  dija:          {seeds: [0, 1, 2]}
+  jbb:           {seeds: [0]}
+  wildjailbreak: {seeds: [0]}
+  xstest:        {seeds: [0]}
+  gsm8k:         {seeds: [0]}
+trace:
+  sets: [dija, jbb, wildjailbreak, xstest]
+  seeds: [0]

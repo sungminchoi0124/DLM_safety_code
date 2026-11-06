@@ -1,0 +1,6 @@
+# XSTest safe prompts (250) for over-refusal. Not an ASR set.
+data:
+  set: xstest
+  id_list: data/ids/xstest_250.txt
+  source: XSTest v2 safe prompts   # T3-2: pin source + sha256
+  attack_method: zeroshot

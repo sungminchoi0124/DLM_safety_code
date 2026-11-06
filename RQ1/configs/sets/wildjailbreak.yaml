@@ -1,0 +1,7 @@
+# WildJailbreak public eval set, 100 adversarial-harmful items sampled with seed 0.
+data:
+  set: wildjailbreak
+  id_list: data/ids/wildjailbreak_100.txt
+  source: allenai/wildjailbreak (eval)   # T3-2: pin revision + sha256; vanilla prompt = dataset's vanilla pair
+  attack_method: zeroshot
+  sample_seed: 0

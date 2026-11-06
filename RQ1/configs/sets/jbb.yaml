@@ -1,0 +1,7 @@
+# JBB-Behaviors goals as plain questions (100), paired with DIJA by behavior index.
+data:
+  set: jbb
+  id_list: data/ids/jbb_100.txt
+  source: JailbreakBench/JBB-Behaviors (harmful split, `Goal`)   # T3-2: pin HF revision + sha256 here
+  attack_method: zeroshot
+  pair_key: jbb_behavior_index

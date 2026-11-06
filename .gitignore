@@ -224,6 +224,8 @@ __marimo__/
 **/outputs/*
 !**/outputs/.gitkeep
 *.jsonl
+# RQ1 contract examples are synthetic (no model output) and must be committed
+!RQ1/examples/*.jsonl
 
 # secrets
 .env

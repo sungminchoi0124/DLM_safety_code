@@ -1,0 +1,54 @@
+# RQ1 base config. Owner: T3-3 (3번).
+# Relative paths are resolved against the RQ1/ folder. Every run = base.yaml <- sets/<set>.yaml <- manifest row.
+# DiffuGuard values below are copied from DiffuGuard/configs/llada_dija.yaml (reproduction, paper Table 5-6).
+
+exp: rq1
+
+model:
+  path: ../hf_models/LLaDA-8B-Instruct      # keep "Instruct" in the dir name (original code checks it)
+  hf_id: GSAI-ML/LLaDA-8B-Instruct
+  revision: 08b83a6feb34df1a6011b80c3c00c7563e963b07   # same weights as DIJA / DiffuGuard reproduction
+  dtype: bfloat16
+
+decoding:
+  gen_length: 128
+  block_length: 128          # single block (KV-cache experiments change this later, not RQ1)
+  speed_level: 2             # 1 | 2 | 4 | 8   (set per run from manifest)
+  steps: auto                # = gen_length / speed_level
+  temperature: 0.5
+  cfg_scale: 0.0             # paper Table 5 (original script default 0.1 is NOT used)
+  mask_id: 126336
+  mask_counts: 36            # only for prompts without <mask:N>
+
+defense:
+  name: diffuguard           # diffuguard | none   (set per run from manifest)
+  schedule: progress         # progress | step   (step = original formula, regression test only, T2-1)
+  presets:
+    diffuguard:
+      remasking: adaptive_step
+      alpha0: 0.3
+      sp_mode: hidden
+      sp_threshold: 0.1          # lambda
+      remask_ratio: 0.9          # gamma
+      refine_budget_ratio: 0.125 # repair steps = max(1, round(0.125 * steps)) -> 16/8/4/2 (original: fixed 8 at 64 steps)
+      correct_only_first_block: true
+      fill_all_masks: true
+      suppression_value: 1000000.0
+    none:
+      remasking: low_confidence
+      sp_mode: "off"            # quoted: bare off is parsed as False
+
+data:
+  set: null                  # set per run
+  id_list: null              # from sets/<set>.yaml
+
+seed: 0
+trace: false                 # make_manifest.py sets true for safety sets with seed 0
+
+judge:
+  model: gpt-4o-mini-2024-07-18
+  kw_version: kw-v1
+  prompt_version: judge-v1
+
+paths:
+  output_dir: ${RQ1_OUTPUT_DIR:-outputs}   # shared VESSL volume in production, local outputs/ for tests

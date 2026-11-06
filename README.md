@@ -32,6 +32,17 @@ DLM_safety_code/
 - 유해 출력은 `outputs/`에만 저장한다. git·메신저·OneDrive 등에 올리지 않는다.
 - API 키는 `.env`에만 둔다. 코드나 명령 기록에 남기지 않는다.
 
+## 본실험
+
+| 폴더 | 연구 질문 | 상태 |
+|---|---|---|
+| [`RQ1/`](RQ1/README.md) | 디퓨전 스텝 수를 줄이면 DiffuGuard를 켠/끈 모델의 ASR과 GSM8K 성능이 어떻게 변하는가 | 뼈대만 있음. 파일 형식은 [`RQ1/docs/interfaces.md`](RQ1/docs/interfaces.md) |
+
+## 브랜치 규칙
+
+- 각자 브랜치에서 작업하고 PR로 `main`에 합친다.
+- **`RQ1/docs/interfaces.md`(팀 사이 파일 형식 계약서)를 바꾸는 PR만 팀장 승인이 필요하다.** 나머지는 각자 판단으로 합친다.
+
 ## 새 논문 추가하기
 
 ```bash

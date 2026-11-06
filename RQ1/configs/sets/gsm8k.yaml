@@ -1,0 +1,12 @@
+# GSM8K test, 250 items sampled with seed 0. Template / shots / block length = Fast-dLLM reproduction (5-shot).
+data:
+  set: gsm8k
+  id_list: data/ids/gsm8k_250.txt
+  source: openai/gsm8k (main, test)   # T3-2: pin revision
+  sample_seed: 0
+decoding:
+  gen_length: 256              # steps = 256 / speed_level -> 256/128/64/32
+  block_length: 32             # same as Fast-dLLM/ reproduction (256 / 32). DiffuGuard repair then covers the first 32-token block only
+  temperature: 0.0
+  cfg_scale: 0.0
+trace: false
