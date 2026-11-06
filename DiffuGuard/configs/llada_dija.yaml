@@ -1,0 +1,87 @@
+# DiffuGuard reproduction: LLaDA-8B-Instruct x DIJA attack prompts x {vanilla | DiffuGuard}.
+# Relative paths are resolved against the DiffuGuard/ folder (DLM_safety_code/DiffuGuard).
+# Every key below can be overridden on the command line (see run_generate.py --help).
+
+diffuguard_root: third_party/DiffuGuard
+diffuguard_commit: 86aeb75203d07064c1ced650edaee74563647d36
+
+# Same weights as the DIJA reproduction (hf_models/ is shared by all papers).
+# The original code decides "instruct" mode by checking that the path contains "instruct" (case-insensitive).
+model_path: GSAI-ML/LLaDA-8B-Instruct
+model_revision: 08b83a6feb34df1a6011b80c3c00c7563e963b07
+
+# Attack / prompt set, selected with --attack. Each entry sets attack_method (original --attack_method),
+# prompt_file (+ sha256, checked on every run) and prompt_set (used in output file names).
+# Prompt files must NOT contain "refine" in their name unless they are DIJA files: the original script then
+# switches to the refined (DIJA) prompt.
+attack: dija_jbb
+attacks:
+  dija_jbb:             # DIJA x JailbreakBench: public DIJA file (100), read from the sibling DIJA/ submodule.
+    attack_method: DIJA #   NEVER regenerate it. No paper number for this combination.
+    prompt_file: ../DIJA/third_party/DIJA/run_jailbreakbench/refine_prompt/jailbreakbench_data_refined_Qwen.json
+    prompt_file_sha256: 534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95
+    prompt_set: jbbQwen
+  pad_advbench:         # Table 1 PAD_AdvBench: 93.65 -> 59.62 (520 items). Built by `python prepare_data.py advbench`
+    attack_method: PAD  #   (plain AdvBench behaviors; the original injects the PAD anchors during generation)
+    prompt_file: outputs/data/advbench_520.json
+    prompt_file_sha256: 41a88fbc32f06446642c777920339efd5fd98e018857f801024ebea14f9e17cf
+    prompt_set: advbench
+  jbb_behaviors:        # Table 1 JBB-Behaviors: 27.33 -> 22.67 (300 items). Built by `python prepare_data.py jbb`
+    attack_method: zeroshot
+    prompt_file: outputs/data/jbb_judge_comparison_300.json
+    prompt_file_sha256: 1ff876e32c7ecbe5b38d13be8cdcbadc1fb757912a9f983052ee75780efcaefd
+    prompt_set: jbbJudge
+  pad_dijajbb:          # Judge-question check (no paper number): PAD on a DIJA file, like the authors' test.sh
+    attack_method: PAD  #   (PAD on dija_advbench.json). Input = plain goal; the record keeps the DIJA text in
+    prompt_file: outputs/data/dija_jbb_100.json   # "refined prompt", which the original judge reads first.
+    prompt_file_sha256: c7457f0dce3acca9f9cdfec7c7e0dc865057fd7375ce241bf6e295a5176d6cb7 # Built by `python prepare_data.py dijajbb`
+    prompt_set: dijajbb
+# The DIJA Table 1 column (98.65 -> 51.92) needs a DIJA x AdvBench (520) file that is NOT public;
+# see README "데이터" (pass it with --prompt_file).
+
+output_dir: outputs/diffuguard
+seed: 0
+
+# Generation (paper Table 5, LLaDA-8B row)
+steps: 64
+gen_length: 128
+block_length: 128
+temperature: 0.5
+cfg_scale: 0.0          # paper Table 5 = 0. NOTE: original script default is 0.1 (README "미확인")
+mask_id: 126336
+mask_counts: 36         # only used when a prompt has no <mask:N> (not the case for DIJA)
+ref_tail_len: 128       # tail-only detection metric the original script records (not used for repair)
+
+# Fixed original-code knobs (not in the paper)
+suppression_value: 1000000.0   # Eq. 10 "-inf" is implemented as logits -= 1e6 (not 1.0e6: YAML reads that as a string)
+correct_only_first_block: true  # paper: repair only the first block (gen_length == block_length -> 1 block anyway)
+fill_all_masks: true            # authors' test.sh passes this on every audit run; only matters when sp_mode != off
+
+defense: diffuguard     # one of the presets below
+
+# Quote "off": bare off is parsed as boolean False by YAML.
+presets:
+  vanilla:              # Table 1 "LLaDA-8B-Instruct" row (no defense)
+    remasking: low_confidence
+    sp_mode: "off"
+  diffuguard:           # Table 1 "+DiffuGuard" row, hyper-parameters from Table 6
+    remasking: adaptive_step      # Stochastic Annealing Remasking, Eq. 7-8
+    alpha0: 0.3
+    sp_mode: hidden               # Block-level Audit (SD, Eq. 9) + Repair (Eq. 10)
+    sp_threshold: 0.1             # lambda
+    refinement_steps: 8           # extra_steps
+    remask_ratio: 0.9             # gamma
+  no_sar:               # Table 2 ablation: w/o Stochastic Annealing Remasking
+    remasking: low_confidence
+    sp_mode: hidden
+    sp_threshold: 0.1
+    refinement_steps: 8
+    remask_ratio: 0.9
+  no_audit:             # Table 2 ablation: w/o Block-level Audit and Repair
+    remasking: adaptive_step
+    alpha0: 0.3
+    sp_mode: "off"
+
+# Rough RTX 3090 estimate for one LLaDA-8B bf16 forward over ~350 tokens. NOT measured.
+# Replace with sec_per_forward from the first --limit 5 run.
+est_forward_sec: 0.12

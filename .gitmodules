@@ -1,3 +1,6 @@
 [submodule "third_party/DIJA"]
 	path = DIJA/third_party/DIJA
 	url = https://github.com/ZichenWen1/DIJA
+[submodule "DiffuGuard/third_party/DiffuGuard"]
+	path = DiffuGuard/third_party/DiffuGuard
+	url = https://github.com/niez233/DiffuGuard
