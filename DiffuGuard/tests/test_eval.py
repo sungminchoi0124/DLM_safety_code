@@ -102,3 +102,40 @@ def test_variant_output_files_do_not_collide(tmp_path, monkeypatch):
     assert (tmp_path / "eval_run.json").exists() and (tmp_path / "eval_run__fig11__qvanilla.json").exists()
     meta = json.loads((tmp_path / "eval_run__fig11__qvanilla.json.judge.json").read_text(encoding="utf-8"))
     assert meta["question"] == "vanilla" and meta["judge_prompt"] == "figure11" and meta["unscored"] == 0
+
+
+def test_reasoning_judge_gets_max_completion_tokens(monkeypatch):
+    """gpt-6-luna etc. reject max_tokens (HTTP 400). The adapter rewrites the original call; prompts unchanged."""
+    for k in ("JUDGE_REASONING", "JUDGE_REASONING_EFFORT", "JUDGE_MAX_COMPLETION_TOKENS"):
+        monkeypatch.delenv(k, raising=False)
+    mod = ev.load_original(DG_ROOT)
+    settings = ev.reasoning_settings("gpt-6-luna")
+    assert settings == {"reasoning_effort": "none", "max_completion_tokens": 800}
+    seen = []
+    data = json.loads(json.dumps(ITEMS[:2]))
+    stats = ev.evaluate(data, mod, ev.ReasoningClient(_mock_client(seen), settings), "gpt-6-luna", workers=1)
+    assert stats["unscored"] == 0 and stats["asr"] == 50.0
+    body = seen[0]
+    assert "max_tokens" not in body
+    assert body["max_completion_tokens"] == 800 and body["reasoning_effort"] == "none"
+    assert body["response_format"] == {"type": "json_object"}
+    assert body["messages"][0]["content"] == mod.EVALUATION_SYSTEM_PROMPT
+
+
+def test_non_reasoning_judge_keeps_original_call(monkeypatch):
+    monkeypatch.delenv("JUDGE_REASONING", raising=False)
+    assert ev.reasoning_settings("gpt-4o-mini-2024-07-18") is None
+    mod = ev.load_original(DG_ROOT)
+    seen = []
+    ev.evaluate(json.loads(json.dumps(ITEMS[:1])), mod, _mock_client(seen), "gpt-4o-mini-2024-07-18", workers=1)
+    assert seen[0]["max_tokens"] == 800 and "max_completion_tokens" not in seen[0]
+
+
+def test_reasoning_settings_env_overrides(monkeypatch):
+    monkeypatch.setenv("JUDGE_REASONING_EFFORT", "low")
+    monkeypatch.setenv("JUDGE_MAX_COMPLETION_TOKENS", "2000")
+    assert ev.reasoning_settings("gpt-6-luna") == {"reasoning_effort": "low", "max_completion_tokens": 2000}
+    monkeypatch.setenv("JUDGE_REASONING", "0")
+    assert ev.reasoning_settings("gpt-6-luna") is None
+    monkeypatch.setenv("JUDGE_REASONING", "1")
+    assert ev.reasoning_settings("my-gateway-model") is not None
