@@ -1,0 +1,214 @@
+[
+  {
+    "run_name": "llada_instruct_gsm8k_diffuguard_semi_ar_steps256_seed0_prop_idsgsm8k_250",
+    "defense": "diffuguard",
+    "decoder": "semi_ar",
+    "decoder_patch": {
+      "source": "utility/generate_function_llada.py",
+      "removed_guard": "if global_mask_pos.numel() > 0:",
+      "replaced_with": "if False and global_mask_pos.numel() > 0:  # semi_ar.py: keep the planned block"
+    },
+    "gen": {
+      "remasking": "adaptive_step",
+      "random_rate": 0.0,
+      "injection_step": null,
+      "alpha0": 0.3,
+      "sp_mode": "hidden",
+      "sp_threshold": 0.1,
+      "refinement_steps": 16,
+      "remask_ratio": 0.9,
+      "suppression_value": 1000000.0,
+      "fill_all_masks": false,
+      "correct_only_first_block": true,
+      "cfg_scale": 0.0,
+      "temperature": 0.0,
+      "steps": 256,
+      "gen_length": 256,
+      "block_length": 32,
+      "mask_id": 126336,
+      "mask_counts": 0,
+      "ref_tail_len": 128
+    },
+    "cli_overrides": {
+      "steps": 256,
+      "refinement_steps": 16
+    },
+    "seed": 0,
+    "doc_ids": "/tmp/gsm/RQ1/data/ids/gsm8k_250.txt",
+    "prompt_file_sha256": "028420a0b305a1f47ea6f229592bc82b4ae7417677bf2ce9fef166f8bb9578c6",
+    "prompt_source": {
+      "task": "gsm8k",
+      "num_fewshot": 5,
+      "fewshot_seed": 1234,
+      "lm_eval_version": "0.4.8"
+    },
+    "team_repo_commit": "09febc36a0ad497a8a9f01760942ae03096e8706",
+    "team_repo_dirty": false,
+    "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+    "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+    "gpu_name": "NVIDIA GeForce RTX 3090",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.52.3",
+    "started_utc": "2026-11-12T10:33:46.690984+00:00",
+    "finished_utc": "2026-11-12T17:32:32.024805+00:00"
+  },
+  {
+    "run_name": "llada_instruct_gsm8k_diffuguard_semi_ar_steps128_seed0_prop_idsgsm8k_250",
+    "defense": "diffuguard",
+    "decoder": "semi_ar",
+    "decoder_patch": {
+      "source": "utility/generate_function_llada.py",
+      "removed_guard": "if global_mask_pos.numel() > 0:",
+      "replaced_with": "if False and global_mask_pos.numel() > 0:  # semi_ar.py: keep the planned block"
+    },
+    "gen": {
+      "remasking": "adaptive_step",
+      "random_rate": 0.0,
+      "injection_step": null,
+      "alpha0": 0.3,
+      "sp_mode": "hidden",
+      "sp_threshold": 0.1,
+      "refinement_steps": 8,
+      "remask_ratio": 0.9,
+      "suppression_value": 1000000.0,
+      "fill_all_masks": false,
+      "correct_only_first_block": true,
+      "cfg_scale": 0.0,
+      "temperature": 0.0,
+      "steps": 128,
+      "gen_length": 256,
+      "block_length": 32,
+      "mask_id": 126336,
+      "mask_counts": 0,
+      "ref_tail_len": 128
+    },
+    "cli_overrides": {
+      "steps": 128,
+      "refinement_steps": 8
+    },
+    "seed": 0,
+    "doc_ids": "/tmp/gsm/RQ1/data/ids/gsm8k_250.txt",
+    "prompt_file_sha256": "028420a0b305a1f47ea6f229592bc82b4ae7417677bf2ce9fef166f8bb9578c6",
+    "prompt_source": {
+      "task": "gsm8k",
+      "num_fewshot": 5,
+      "fewshot_seed": 1234,
+      "lm_eval_version": "0.4.8"
+    },
+    "team_repo_commit": "09febc36a0ad497a8a9f01760942ae03096e8706",
+    "team_repo_dirty": false,
+    "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+    "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+    "gpu_name": "NVIDIA GeForce RTX 3090",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.52.3",
+    "started_utc": "2026-11-12T07:03:23.745305+00:00",
+    "finished_utc": "2026-11-12T10:33:34.454118+00:00"
+  },
+  {
+    "run_name": "llada_instruct_gsm8k_diffuguard_semi_ar_steps64_seed0_prop_idsgsm8k_250",
+    "defense": "diffuguard",
+    "decoder": "semi_ar",
+    "decoder_patch": {
+      "source": "utility/generate_function_llada.py",
+      "removed_guard": "if global_mask_pos.numel() > 0:",
+      "replaced_with": "if False and global_mask_pos.numel() > 0:  # semi_ar.py: keep the planned block"
+    },
+    "gen": {
+      "remasking": "adaptive_step",
+      "random_rate": 0.0,
+      "injection_step": null,
+      "alpha0": 0.3,
+      "sp_mode": "hidden",
+      "sp_threshold": 0.1,
+      "refinement_steps": 4,
+      "remask_ratio": 0.9,
+      "suppression_value": 1000000.0,
+      "fill_all_masks": false,
+      "correct_only_first_block": true,
+      "cfg_scale": 0.0,
+      "temperature": 0.0,
+      "steps": 64,
+      "gen_length": 256,
+      "block_length": 32,
+      "mask_id": 126336,
+      "mask_counts": 0,
+      "ref_tail_len": 128
+    },
+    "cli_overrides": {
+      "steps": 64,
+      "refinement_steps": 4
+    },
+    "seed": 0,
+    "doc_ids": "/tmp/gsm/RQ1/data/ids/gsm8k_250.txt",
+    "prompt_file_sha256": "028420a0b305a1f47ea6f229592bc82b4ae7417677bf2ce9fef166f8bb9578c6",
+    "prompt_source": {
+      "task": "gsm8k",
+      "num_fewshot": 5,
+      "fewshot_seed": 1234,
+      "lm_eval_version": "0.4.8"
+    },
+    "team_repo_commit": "09febc36a0ad497a8a9f01760942ae03096e8706",
+    "team_repo_dirty": false,
+    "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+    "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+    "gpu_name": "NVIDIA GeForce RTX 3090",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.52.3",
+    "started_utc": "2026-11-12T05:17:22.891138+00:00",
+    "finished_utc": "2026-11-12T07:03:12.196283+00:00"
+  },
+  {
+    "run_name": "llada_instruct_gsm8k_diffuguard_semi_ar_steps32_seed0_prop_idsgsm8k_250",
+    "defense": "diffuguard",
+    "decoder": "semi_ar",
+    "decoder_patch": {
+      "source": "utility/generate_function_llada.py",
+      "removed_guard": "if global_mask_pos.numel() > 0:",
+      "replaced_with": "if False and global_mask_pos.numel() > 0:  # semi_ar.py: keep the planned block"
+    },
+    "gen": {
+      "remasking": "adaptive_step",
+      "random_rate": 0.0,
+      "injection_step": null,
+      "alpha0": 0.3,
+      "sp_mode": "hidden",
+      "sp_threshold": 0.1,
+      "refinement_steps": 2,
+      "remask_ratio": 0.9,
+      "suppression_value": 1000000.0,
+      "fill_all_masks": false,
+      "correct_only_first_block": true,
+      "cfg_scale": 0.0,
+      "temperature": 0.0,
+      "steps": 32,
+      "gen_length": 256,
+      "block_length": 32,
+      "mask_id": 126336,
+      "mask_counts": 0,
+      "ref_tail_len": 128
+    },
+    "cli_overrides": {
+      "steps": 32,
+      "refinement_steps": 2
+    },
+    "seed": 0,
+    "doc_ids": "/tmp/gsm/RQ1/data/ids/gsm8k_250.txt",
+    "prompt_file_sha256": "028420a0b305a1f47ea6f229592bc82b4ae7417677bf2ce9fef166f8bb9578c6",
+    "prompt_source": {
+      "task": "gsm8k",
+      "num_fewshot": 5,
+      "fewshot_seed": 1234,
+      "lm_eval_version": "0.4.8"
+    },
+    "team_repo_commit": "09febc36a0ad497a8a9f01760942ae03096e8706",
+    "team_repo_dirty": false,
+    "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+    "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+    "gpu_name": "NVIDIA GeForce RTX 3090",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.52.3",
+    "started_utc": "2026-11-12T04:23:37.472094+00:00",
+    "finished_utc": "2026-11-12T05:17:10.032266+00:00"
+  }
+]

@@ -1,0 +1,5 @@
+defense,level,steps,n,acc_flexible,acc_flexible_lo,acc_flexible_hi,acc_strict,invalid_flexible,repair_rate,refinement_steps,sec_per_item,tokens_per_second,gen_forwards_per_item
+diffuguard,L1,256,250,68.4,62.4,73.8,39.6,0,1.0,16,100.49,2.081,272.0
+diffuguard,L2,128,250,63.6,57.5,69.3,37.6,0,1.0,8,50.44,4.085,136.0
+diffuguard,L4,64,250,52.4,46.2,58.5,35.6,0,1.0,4,25.39,8.219,68.0
+diffuguard,L8,32,250,25.2,20.2,30.9,11.2,5,1.0,2,12.84,17.052,34.0
