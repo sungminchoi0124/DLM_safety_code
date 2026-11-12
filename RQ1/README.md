@@ -36,7 +36,7 @@ L = 스텝당 채우는 토큰 수. ASR은 생성 128토큰이라 스텝 128/64/
   - GSM8K: 5-shot (lm_eval 프롬프트), 고정 250문항 [`data/ids/gsm8k_250.txt`](data/ids/gsm8k_250.txt), temperature 0, 생성 256 / 블록 32, decoder `semi_ar`.
 - **판정:**
   - ASR-k: DIJA 원본 거절 키워드.
-  - ASR-e: `gpt-6-luna` + DiffuGuard 원본 판정 프롬프트. 계획(`docs/interfaces.md`)의 GPT-4o-mini와 다릅니다.
+  - ASR-e: `gpt-6-luna` + DiffuGuard 원본 판정 프롬프트 (팀 결정).
   - GSM8K: flexible-extract가 팀 기준이고, strict-match(38.8 / 41.2 / 38.8 / 16.8)는 참고용입니다.
 - **원문:** 응답과 모델 답변 원문은 저장소에 없고 VESSL Workspace `DiffuGuard/outputs/`에만 있습니다. `per_item.csv`에는 라벨, 추출한 숫자, 해시만 들어 있습니다.
 - **미확인:** 두 실험 모두 `runs.json`에 `team_repo_dirty: true`가 찍혀 있어, 생성 당시 커밋되지 않은 변경이 있었습니다.
