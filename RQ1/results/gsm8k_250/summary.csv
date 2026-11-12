@@ -1,0 +1,5 @@
+defense,level,steps,n,acc_flexible,acc_flexible_lo,acc_flexible_hi,acc_strict,invalid_flexible,repair_rate,refinement_steps,sec_per_item,tokens_per_second,gen_forwards_per_item
+vanilla,L1,256,250,77.6,72.0,82.3,38.8,0,0.0,8,94.47,2.445,256.0
+vanilla,L2,128,250,77.2,71.6,82.0,41.2,0,0.0,8,47.31,4.853,128.0
+vanilla,L4,64,250,66.4,60.3,72.0,38.8,0,0.0,8,23.62,9.368,64.0
+vanilla,L8,32,250,29.2,23.9,35.1,16.8,7,0.0,8,11.8,19.346,32.0
