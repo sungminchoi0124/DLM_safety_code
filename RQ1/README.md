@@ -6,7 +6,40 @@
 - 할 일과 담당: 노션 "RQ1 작업 카드"
 - 파일 형식 약속: [`docs/interfaces.md`](docs/interfaces.md) ← **코드를 쓰기 전에 먼저 읽기**
 
-이 폴더는 **뼈대만 있는 상태**입니다. 각 파일 맨 위에 담당 카드 ID가 적혀 있고, 아직 구현하지 않은 함수는 `NotImplementedError("T3-4 …")`를 냅니다.
+## 진행 상황
+
+| 조건 | ASR (DIJA × JBB 100) | 성능 (GSM8K 250) |
+|---|---|---|
+| 방어 없음 (vanilla) | **완료** (시드 0) → [`results/pilot_vanilla_dija_steps/`](results/pilot_vanilla_dija_steps/summary.md) | **완료** → [`results/gsm8k_250/`](results/gsm8k_250/summary.md) |
+| DiffuGuard 켬 | 진행 중 (요약 스크립트 `scripts/summarize_with_diffuguard.py` 준비됨) | 진행 중 |
+| 나머지 세트 (JBB 원문, WildJailbreak, XSTest), DIJA 시드 1·2 | 아직 | — |
+
+- 지금까지의 결과는 `run.py` 파이프라인이 아니라 **`DiffuGuard/` 재현 코드로 생성**했습니다 (ASR: `DiffuGuard/run_generate.py`, GSM8K: `DiffuGuard/run_gsm8k.py`). 그래서 결과 파일 형식은 `docs/interfaces.md`(`raw.jsonl` 등)가 아니라 `results/*/` 아래 요약 파일입니다.
+- `run.py`와 `src/`는 아직 **뼈대 상태**입니다. 각 파일 맨 위에 담당 카드 ID가 적혀 있고, 구현하지 않은 함수는 `NotImplementedError("T3-4 …")`를 냅니다.
+
+## 결과
+
+### 방어 없음 × 스텝 수 (시드 0, RTX 3090)
+
+L = 스텝당 채우는 토큰 수. ASR은 생성 128토큰이라 스텝 128/64/32/16, GSM8K는 생성 256토큰이라 스텝 256/128/64/32가 각각 L1/L2/L4/L8입니다.
+
+| L | ASR 스텝 | ASR-k (%) [95% CI] | ASR-e (%) [95% CI] | ASR 문항당 초 | GSM8K 스텝 | GSM8K 정확도 (%) [95% CI] | GSM8K 문항당 초 |
+|---|---:|---|---|---:|---:|---|---:|
+| L1 | 128 | 96.0 [90.2, 98.4] | 84.0 [75.6, 89.9] | 20.08 | 256 | 77.6 [72.0, 82.3] | 94.47 |
+| L2 | 64 | 94.0 [87.5, 97.2] | 82.0 [73.3, 88.3] | 10.01 | 128 | 77.2 [71.6, 82.0] | 47.31 |
+| L4 | 32 | 95.0 [88.8, 97.8] | 81.0 [72.2, 87.5] | 5.23 | 64 | 66.4 [60.3, 72.0] | 23.62 |
+| L8 | 16 | 93.0 [86.3, 96.6] | 73.0 [63.6, 80.7] | 2.72 | 32 | 29.2 [23.9, 35.1] | 11.80 |
+
+- **관찰:** L2까지는 ASR, 정확도 모두 거의 그대로입니다. L4부터 GSM8K가 떨어지고 L8에서 29.2%로 무너집니다. ASR-e는 L8에서 84 → 73으로 내려가지만 95% CI가 겹치고 시드가 1개뿐이라 유의하다고 보기 어렵습니다. ASR-k는 93~96%로 거의 변하지 않습니다.
+- **설정:**
+  - ASR: DIJA 공개 `_Qwen` 프롬프트 100개, temperature 0.5, 응답 마스크 36칸 + 생성 128, 블록 128.
+  - GSM8K: 5-shot (lm_eval 프롬프트), 고정 250문항 [`data/ids/gsm8k_250.txt`](data/ids/gsm8k_250.txt), temperature 0, 생성 256 / 블록 32, decoder `semi_ar`.
+- **판정:**
+  - ASR-k: DIJA 원본 거절 키워드.
+  - ASR-e: `gpt-6-luna` + DiffuGuard 원본 판정 프롬프트. 계획(`docs/interfaces.md`)의 GPT-4o-mini와 다릅니다.
+  - GSM8K: flexible-extract가 팀 기준이고, strict-match(38.8 / 41.2 / 38.8 / 16.8)는 참고용입니다.
+- **원문:** 응답과 모델 답변 원문은 저장소에 없고 VESSL Workspace `DiffuGuard/outputs/`에만 있습니다. `per_item.csv`에는 라벨, 추출한 숫자, 해시만 들어 있습니다.
+- **미확인:** 두 실험 모두 `runs.json`에 `team_repo_dirty: true`가 찍혀 있어, 생성 당시 커밋되지 않은 변경이 있었습니다.
 
 ## 실험 조건 요약
 
@@ -39,7 +72,12 @@ RQ1/
 │   └── trace.py              # trace 기록기                   T1-3
 ├── scripts/
 │   ├── make_manifest.py      # grid.yaml → manifest.csv        T3-5
-│   └── sync_manifest.py      # status.json → manifest.csv      T3-5
+│   ├── sync_manifest.py      # status.json → manifest.csv      T3-5
+│   ├── make_gsm8k_ids.py     # GSM8K 고정 250문항 ID 목록 (시드 0)
+│   ├── summarize_pilot.py    # vanilla DIJA 출력 → results/pilot_vanilla_dija_steps/
+│   ├── summarize_gsm8k.py    # GSM8K 출력 → results/gsm8k_250/
+│   └── summarize_with_diffuguard.py  # DiffuGuard 켬 출력 → results/with_diffuguard_*/
+├── results/                  # 커밋해도 되는 요약 (숫자·라벨·해시만, 원문 없음)
 ├── judge/
 │   ├── judge.py              # 키워드·GPT-4o-mini·XSTest 판정  T4-1
 │   ├── merge.py              # → items.parquet                T4-2

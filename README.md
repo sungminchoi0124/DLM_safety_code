@@ -8,7 +8,7 @@
 |---|---|---|---|
 | [`DIJA/`](DIJA/README.md) | DIJA (ICLR 2026, arXiv 2507.11097) — JailbreakBench × LLaDA-8B-Instruct | | 5문항 확인 완료 (RTX 3090), 100문항 실행 대기 |
 | [`DiffuGuard/`](DiffuGuard/README.md) | DiffuGuard (ICLR 2026, arXiv 2509.24296) — LLaDA-8B-Instruct × {PAD×AdvBench, JBB-Behaviors, DIJA} × {방어 없음, DiffuGuard} | | CPU 테스트 완료, GPU 실행 대기. 주 검증은 PAD×AdvBench 520 (Table 1: 93.65 → 59.62). DIJA×AdvBench 프롬프트는 비공개 |
-| `<논문3>/` | | | |
+| [`Fast-dLLM/`](Fast-dLLM/README.md) | Fast-dLLM v1 — LLaDA-8B-Instruct × GSM8K 5-shot, Prefix KV Cache · 병렬 디코딩 | | 완료 (RTX 3090). 100문항 Cache+Parallel 10.96x / 81%, 전체 1,319문항 77.56% (공식 78.5%) |
 
 ## 구조 규칙
 
@@ -36,7 +36,16 @@ DLM_safety_code/
 
 | 폴더 | 연구 질문 | 상태 |
 |---|---|---|
-| [`RQ1/`](RQ1/README.md) | 디퓨전 스텝 수를 줄이면 DiffuGuard를 켠/끈 모델의 ASR과 GSM8K 성능이 어떻게 변하는가 | 뼈대만 있음. 파일 형식은 [`RQ1/docs/interfaces.md`](RQ1/docs/interfaces.md) |
+| [`RQ1/`](RQ1/README.md) | 디퓨전 스텝 수를 줄이면 DiffuGuard를 켠/끈 모델의 ASR과 GSM8K 성능이 어떻게 변하는가 | **방어 없음(vanilla) 스텝 감소 실험 완료** (DIJA ASR, GSM8K 250 정확도, 시드 0). DiffuGuard 켬 조건 진행 중. `run.py` 본실행 파이프라인은 뼈대 상태. 파일 형식은 [`RQ1/docs/interfaces.md`](RQ1/docs/interfaces.md) |
+
+**RQ1 vanilla 결과 요약** (자세한 표: [`RQ1/README.md`](RQ1/README.md#결과))
+
+| 속도 단계 L | 1 | 2 | 4 | 8 |
+|---|---:|---:|---:|---:|
+| DIJA ASR-e (%) | 84.0 | 82.0 | 81.0 | 73.0 |
+| GSM8K 정확도 (%) | 77.6 | 77.2 | 66.4 | 29.2 |
+
+스텝을 1/8로 줄이면 GSM8K 정확도는 크게 무너지지만, 방어 없는 모델의 ASR-e는 11%p만 내려갑니다.
 
 ## 브랜치 규칙
 
