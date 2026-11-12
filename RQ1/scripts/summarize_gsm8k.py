@@ -78,7 +78,7 @@ def main():
         lines.append(f"| {s['defense']} | {s['level']} | {s['steps']} | {s['acc_flexible']} "
                      f"[{s['acc_flexible_lo']}, {s['acc_flexible_hi']}] | {s['acc_strict']} | "
                      f"{s['repair_rate']} | {s['sec_per_item']} |")
-    lines += ["", "L = 스텝당 채우는 토큰 수 (256 / steps). L16(16스텝)은 ASR 쪽에 대응 조건이 없는 추가 점입니다.",
+    lines += ["", "L = 스텝당 채우는 토큰 수 (256 / steps).",
               "모델 답변 원문은 저장소에 없습니다 (VESSL Workspace `DiffuGuard/outputs/`). "
               "`per_item.csv`는 문항별 정답 여부와 추출한 숫자만 담습니다.", ""]
     (OUT / "summary.md").write_text("\n".join(lines), encoding="utf-8")
