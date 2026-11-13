@@ -19,8 +19,9 @@ Model class (--model_class): Fast-dLLM's LLaDAModelLM (default, needs FAST_DLLM_
 for every column, because columns D/E need its KV-cache API and all columns should run the same model code.
 --model_class auto (transformers AutoModel, as RQ1) is allowed for columns 0-C only.
 
-Outputs (RQ2/outputs/gsm8k/, git-ignored): <run_id>.json (answers), <run_id>.meta.json (settings, summary,
-per-item stats without text), <run_id>.partial.jsonl while running (resumed on restart). The console shows
+Outputs (RQ2/outputs/gsm8k/, git-ignored): <run_id>.json (answers), <run_id>.raw.jsonl (one line per item in the
+RQ1 interfaces.md layout + RQ2 fields; has the response text), <run_id>.meta.json (settings, summary, per-item
+stats without text), <run_id>.partial.jsonl while running (resumed on restart). The console shows
 counts only, never response text.
 
     FAST_DLLM_ROOT=/root/Fast-dLLM python run_rq2_gsm8k.py --column A --defense dg
@@ -28,7 +29,9 @@ counts only, never response text.
 """
 
 import argparse
+import hashlib
 import json
+import logging
 import os
 import sys
 import time
@@ -145,6 +148,80 @@ def run_id(args):
 
 # --------------------------------------------------------------------------- generation (model-agnostic, CPU-testable)
 
+def _field(r, k):
+    """Per-item field, filling the ones that records written before the runner update lack (resumed partials)."""
+    if k in r:
+        return r[k]
+    if k == "nfe_total":
+        return r["nfe_gen"] + r["nfe_repair"] + r["nfe_baseline"]
+    return {"n_masks_left": 0, "baseline_tries": 1 if r.get("nfe_baseline") else 0}[k]
+
+
+class _Capture(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.DEBUG)
+        self.messages = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+def baseline_hidden_with_retry(jbl, item, tokenizer, model, is_instruct, echo, tries=2):
+    """The original compute_baseline_hidden swallows its exception and logs it at INFO. Capture that message so a
+    failure says why, and retry once. Runs under no_grad (same values, no activation memory)."""
+    cap = _Capture()
+    root = logging.getLogger()
+    old_level = root.level
+    root.addHandler(cap)
+    root.setLevel(min(old_level, logging.INFO) if old_level else logging.INFO)
+    try:
+        for t in range(1, tries + 1):
+            cap.messages.clear()
+            with torch.no_grad():                  # the original has none: without it the forward keeps its
+                h = jbl.compute_baseline_hidden(      # autograd activations (OOM on a 24 GB 3090, doc 25)
+                    vanilla_text=item["context"], tokenizer=tokenizer, model=model,
+                    is_instruct=is_instruct, system_prompt=None, debug_print=False)
+            if h is not None:
+                if t > 1:
+                    echo(f"WARNING doc {item['doc_id']}: baseline hidden state succeeded on try {t}")
+                return h, t
+            why = "; ".join(m for m in cap.messages if "Baseline" in m) or "no hidden_states returned"
+            echo(f"WARNING doc {item['doc_id']}: baseline hidden state failed (try {t}/{tries}): {why}")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    finally:
+        root.removeHandler(cap)
+        root.setLevel(old_level)
+    raise SystemExit(f"doc {item['doc_id']}: baseline hidden state failed after {tries} tries: {why}")
+
+
+def raw_record(r, *, rid, args, s, seed):
+    """One raw.jsonl line in the RQ1 docs/interfaces.md section 5 layout, plus the RQ2 fields (column, accel,
+    threshold, cache, NFE split). output_text is the post-processed response, as scored."""
+    col = COLUMNS[args.column]
+    text = r["response"]
+    return {
+        "run_id": rid, "item_id": f"gsm8k-{r['doc_id']:03d}", "pair_id": None, "set": "gsm8k",
+        "speed_level": None,                       # RQ1 level; RQ2 cells are named by column instead
+        "column": args.column, "accel": col["mode"], "threshold": s.get("threshold"), "cache": s.get("cache"),
+        "steps": s.get("steps") if col["mode"] == "fixed" else r["nfe_gen"],
+        "defense": "diffuguard" if s["defense"] else "none", "seed": seed, "doc_id": r["doc_id"],
+        "output_text": text, "output_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "output_len": r["n_tokens"],
+        "n_masks": _field(r, "gen_length") - _field(r, "n_masks_left") if "gen_length" in r else None,
+        "n_masks_left": _field(r, "n_masks_left"),
+        "nfe": _field(r, "nfe_total"), "nfe_gen": r["nfe_gen"], "nfe_cached": r["nfe_cached"],
+        "nfe_audit": r["nfe_baseline"], "nfe_repair": r["nfe_repair"], "nfe_total": _field(r, "nfe_total"),
+        "wall_ms": int(round(r["wall_ms"])),
+        "audit_score": r["audit_score"], "audit_logit": r["audit_logit"], "audit_hidden": r["audit_hidden"],
+        "audit_unsafe": r["audit_unsafe"] if s["defense"] else None,
+        "repair_triggered": bool(r["repaired"]) if s["defense"] else None,
+        "repair_steps": r["nfe_repair"] if s["defense"] else None,
+        "pred_answer": r["pred_flexible"], "pred_strict": r["pred_strict"], "gold_answer": r["target"],
+        "correct_flexible": r["correct_flexible"], "correct_strict": r["correct_strict"],
+    }
+
+
 def run_items(items, spec, tokenizer, model, s, jbl, *, seed=0, is_instruct=True, partial_path=None, echo=print):
     """One record per item, resumable from partial_path. jbl = original models/jailbreakbench_llada.py (prompt
     building, tokenization, baseline hidden state), as in the RQ1 runner."""
@@ -169,27 +246,28 @@ def run_items(items, spec, tokenizer, model, s, jbl, *, seed=0, is_instruct=True
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t0 = time.perf_counter()
-        baseline_hidden = None
+        baseline_hidden, baseline_tries = None, 0
         if s["defense"]:
-            baseline_hidden = jbl.compute_baseline_hidden(vanilla_text=item["context"], tokenizer=tokenizer,
-                                                          model=model, is_instruct=is_instruct, system_prompt=None,
-                                                          debug_print=False)
-            if baseline_hidden is None:
-                raise SystemExit(f"doc {item['doc_id']}: baseline hidden state failed")
+            baseline_hidden, baseline_tries = baseline_hidden_with_retry(jbl, item, tokenizer, model, is_instruct, echo)
         out, st = combined.generate(model, input_ids, attention_mask=attention_mask, temperature=s["temperature"],
                                     baseline_hidden=baseline_hidden, cue_ids=cue_ids, **gen_kw)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         dt = time.perf_counter() - t0
         tail = out[0][input_ids.shape[1]:]
-        if bool((tail == combined.MASK_ID).any()):
-            raise SystemExit(f"doc {item['doc_id']}: masks left after generation")
+        n_masks_left = int((tail == combined.MASK_ID).sum())
+        if n_masks_left:                            # recorded, not fatal: the count goes to the summary
+            echo(f"WARNING doc {item['doc_id']}: {n_masks_left} masks left after generation")
         response, n_tokens = rq1.postprocess(tokenizer, tail, item["until"])
+        nfe_audit = int(s["defense"])               # the baseline hidden forward; the audit itself reuses logits
         rec = {"doc_id": item["doc_id"], "response": response, "target": item["target"],
                **rq1.score(response, item["target"], spec),
                "prompt_tokens": int(input_ids.shape[1]), "n_tokens": n_tokens,
+               "gen_length": int(tail.shape[0]), "n_masks_left": n_masks_left,
                "nfe_gen": st.nfe_gen, "nfe_cached": st.nfe_cached, "nfe_repair": st.nfe_repair,
-               "nfe_baseline": int(s["defense"]), "wall_ms": round(1000 * dt, 1),
+               "nfe_baseline": nfe_audit, "nfe_audit": nfe_audit,
+               "nfe_total": st.nfe_gen + st.nfe_repair + nfe_audit, "baseline_tries": baseline_tries,
+               "wall_ms": round(1000 * dt, 1),
                "audit_score": st.audit_score, "audit_logit": st.audit_logit, "audit_hidden": st.audit_hidden,
                "audit_unsafe": st.audit_unsafe, "repaired": st.repaired}
         records.append(rec)
@@ -214,10 +292,13 @@ def summarize(records):
     out["invalid_flexible"] = inv
     out["invalid_rate"] = round(inv / max(n, 1), 4)          # non-answer rate
     out["repair_rate"] = round(sum(bool(r["repaired"]) for r in records) / max(n, 1), 4)
-    for k in ("nfe_gen", "nfe_cached", "nfe_repair", "nfe_baseline", "wall_ms"):
-        tot = sum(r[k] for r in records)
+    for k in ("nfe_gen", "nfe_cached", "nfe_repair", "nfe_baseline", "nfe_total", "wall_ms"):
+        tot = sum(_field(r, k) for r in records)
         out[f"total_{k}"] = round(tot, 1)
         out[f"mean_{k}"] = round(tot / max(n, 1), 2)
+    out["total_n_masks_left"] = sum(_field(r, "n_masks_left") for r in records)
+    out["items_with_masks_left"] = sum(_field(r, "n_masks_left") > 0 for r in records)
+    out["baseline_retries"] = sum(max(_field(r, "baseline_tries") - 1, 0) for r in records)
     secs = out["total_wall_ms"] / 1000
     out["tokens_per_second"] = round(sum(r["n_tokens"] for r in records) / max(secs, 1e-9), 3)
     return out
@@ -239,7 +320,11 @@ def load_model(args, model_path, revision):
             raise SystemExit("--model_class fastdllm needs --fast_dllm_root / FAST_DLLM_ROOT (Fast-dLLM a9b81e4)")
         sys.path.insert(0, str(llada))
         from model.modeling_llada import LLaDAModelLM      # same loading as Fast-dLLM eval_llada.py
-        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True, **kw)
+        # no trust_remote_code: Fast-dLLM registers its own LLaDAConfig for "llada" (as eval_llada.py loads it);
+        # the checkpoint's remote config lacks fields LLaDAModelLM reads (train_max_sequence_length)
+        config = AutoConfig.from_pretrained(model_path, **kw)
+        if type(config).__module__ != "model.configuration_llada":
+            raise SystemExit(f"expected Fast-dLLM LLaDAConfig, got {type(config).__module__}")
         model = LLaDAModelLM.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16,
                                              config=config, **kw)
         source = f"Fast-dLLM LLaDAModelLM ({rg.git_commit(root)})"
@@ -290,6 +375,10 @@ def main(argv=None):
     keep = ("doc_id", "response", "target", "pred_flexible", "pred_strict", "correct_flexible", "correct_strict")
     with open(ans_path, "w", encoding="utf-8") as f:
         json.dump([{k: r[k] for k in keep} for r in records], f, indent=1, ensure_ascii=False)
+    raw_path = out_dir / f"{rid}.raw.jsonl"          # response text: outputs/ only, like <run_id>.json
+    with open(raw_path, "w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(raw_record(r, rid=rid, args=args, s=s, seed=args.seed), ensure_ascii=False) + "\n")
     meta = {
         "run_id": rid, "task": "gsm8k", "column": args.column, "defense": args.defense,
         "accel": COLUMNS[args.column]["mode"], "threshold": s.get("threshold"), "cache": s.get("cache"),
@@ -303,7 +392,7 @@ def main(argv=None):
         "gpu_name": torch.cuda.get_device_name(0), "torch_version": torch.__version__,
         "transformers_version": __import__("transformers").__version__,
         "per_item": [{k: v for k, v in r.items() if k not in ("response", "target")} for r in records],
-        "output_json": str(ans_path),
+        "output_json": str(ans_path), "raw_jsonl": str(raw_path),
     }
     meta_path = out_dir / f"{rid}.meta.json"
     with open(meta_path, "w", encoding="utf-8") as f:
@@ -312,7 +401,8 @@ def main(argv=None):
     print(f"saved -> {ans_path.name}, {meta_path.name}")
     print(f"n={meta['n']} flexible={meta['accuracy_flexible']}% strict={meta['accuracy_strict']}% "
           f"invalid={meta['invalid_rate']} repair_rate={meta['repair_rate']} "
-          f"nfe/item={meta['mean_nfe_gen']}+{meta['mean_nfe_repair']} tok/s={meta['tokens_per_second']}")
+          f"nfe/item={meta['mean_nfe_gen']}+{meta['mean_nfe_repair']} (total {meta['mean_nfe_total']}) "
+          f"masks_left={meta['total_n_masks_left']} tok/s={meta['tokens_per_second']}")
     return meta
 
 
