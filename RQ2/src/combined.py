@@ -300,8 +300,14 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
 
             mask_index = xw == mask_id
             x0 = torch.argmax(add_gumbel_noise(logits, temperature), dim=-1)
-            p = F.softmax(logits.to(torch.float64) if conf_precision == "float64" else logits, dim=-1)
-            model_confidence = torch.squeeze(torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1)
+            # p(x0) is only read inside the current block (score, tau count), so the softmax runs on those rows
+            # only: same per-row values, but no [window, vocab] float64 copy (3+ GB for a 1.6k-token GSM8K
+            # sequence on a full forward -> OOM on a 24 GB 3090). Rows outside the block get 0 (never used).
+            rows = rw[0].nonzero(as_tuple=True)[0]
+            lr = logits[0, rows]
+            pr = F.softmax(lr.to(torch.float64) if conf_precision == "float64" else lr, dim=-1)
+            model_confidence = torch.zeros(x0.shape, dtype=pr.dtype, device=x0.device)
+            model_confidence[0, rows] = torch.gather(pr, -1, x0[0, rows].unsqueeze(-1)).squeeze(-1)
             R = torch.rand((1, x.shape[1]), device=x0.device)[:, off:off + W] if draw_R else None
 
             if defense:
