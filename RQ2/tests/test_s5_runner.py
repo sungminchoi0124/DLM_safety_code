@@ -182,13 +182,16 @@ def test_nfe_total_and_raw_record(jbl, column, defense):
     recs = runner.run_items(ITEMS, SPEC, Tok(), FakeCacheModel().eval(), s, jbl, echo=lambda m: None)
     args = runner.build_parser().parse_args(["--column", column, "--defense", defense])
     for r in recs:
-        assert r["nfe_total"] == r["nfe_gen"] + r["nfe_repair"] + r["nfe_audit"]
-        assert r["nfe_audit"] == r["nfe_baseline"] == (defense == "dg")
+        assert r["nfe_total"] == r["nfe_gen"] + r["nfe_baseline"] + r["nfe_audit_calls"] + r["nfe_repair"]
+        assert r["nfe_baseline"] == (defense == "dg") and r["nfe_audit_calls"] == 0
         assert r["n_masks_left"] == 0 and r["gen_length"] == 64
         raw = runner.raw_record(r, rid="rid", args=args, s=s, seed=0)
         assert RAW_REQUIRED <= set(raw)
         json.dumps(raw)
         assert raw["nfe"] == raw["nfe_total"] == r["nfe_total"] and raw["n_masks"] == 64
+        assert (raw["nfe_baseline"], raw["nfe_audit"], raw["nfe_repair"]) == \
+            (r["nfe_baseline"], 0, r["nfe_repair"])
+        assert raw["nfe_total"] == raw["nfe_gen"] + raw["nfe_baseline"] + raw["nfe_audit"] + raw["nfe_repair"]
         assert raw["output_text"] == r["response"] and len(raw["output_sha256"]) == 64
         assert raw["item_id"] == f"gsm8k-{r['doc_id']:03d}" and raw["column"] == column
         assert raw["steps"] == (64 if column == "0" else r["nfe_gen"])
@@ -251,7 +254,7 @@ def test_baseline_retry_logs_the_reason(jbl):
 def test_summary_reads_records_from_before_the_update(jbl):
     recs = runner.run_items(ITEMS, SPEC, Tok(), FakeCacheModel().eval(), _settings("A", "dg"), jbl,
                             echo=lambda m: None)
-    old = [{k: v for k, v in r.items() if k not in ("nfe_total", "nfe_audit", "n_masks_left", "gen_length",
+    old = [{k: v for k, v in r.items() if k not in ("nfe_total", "nfe_audit_calls", "n_masks_left", "gen_length",
                                                       "baseline_tries")} for r in recs]
     assert runner.summarize(old) == runner.summarize(recs)
 
@@ -267,3 +270,17 @@ def test_baseline_runs_without_autograd(jbl):
     runner.run_items(ITEMS[:1], SPEC, Tok(), FakeCacheModel().eval(), _settings("0", "dg"), Spy(jbl, 0),
                      echo=lambda m: None)
     assert seen == [False]
+
+
+def test_wall_ms_includes_the_baseline_forward(jbl):
+    """The timer starts before the baseline hidden state: a slow baseline shows up in wall_ms."""
+    import time as _t
+
+    class Slow(FlakyJbl):
+        def compute_baseline_hidden(self, **kw):
+            _t.sleep(0.3)
+            return super().compute_baseline_hidden(**kw)
+
+    recs = runner.run_items(ITEMS[:1], SPEC, Tok(), FakeCacheModel().eval(), _settings("A", "dg"), Slow(jbl, 0),
+                            echo=lambda m: None)
+    assert recs[0]["wall_ms"] >= 300

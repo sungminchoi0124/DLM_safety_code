@@ -23,9 +23,9 @@ for operation so that floats and the RNG stream match:
     refinement_steps with RANDOM order when remasking != low_confidence (as in the original)
 
 Deliberate differences from the original (none of them changes the output):
-  * only the GSM8K-style setting is supported for now: no mask tokens inside the prompt, fill_all_masks=False,
-    cfg_scale=0, no PAD/injection, protected_index empty, correct_only_first_block=True. Prompts with mask
-    tokens (DIJA) raise until the ASR path is designed (team decision pending).
+  * fill_all_masks=False, cfg_scale=0, no PAD/injection, protected_index empty, correct_only_first_block=True.
+    Prompts with mask tokens (DIJA) need prompt_masks="first_block" (RQ2 ASR layout, see generate()); the
+    original instead widens every block to span all remaining masks.
   * hidden states are requested only on the step that uses them (block 0, step 0); the original requests them on
     every step and discards them.
   * the audit is computed for block 0 only (the only block that can trigger repair); the original also computes
@@ -105,6 +105,8 @@ def cosine_distance(a, b):
 class Stats:
     nfe_gen: int = 0                 # forwards of the denoising loop
     nfe_repair: int = 0              # forwards of the repair loop
+    nfe_audit: int = 0               # forwards of the audit: always 0 (it reuses the last step's logits and the
+                                     # first step's hidden states); the baseline hidden forward is the caller's
     nfe_cached: int = 0              # of nfe_gen: forwards that ran on a cached window (cache="prefix" | "dual")
     audit_logit: Optional[float] = None    # block-0 logit conflict score
     audit_hidden: Optional[float] = None   # block-0 cosine distance to baseline_hidden (None: not available)
@@ -133,7 +135,8 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
              mode="fixed", threshold=None, conf_precision=None,
              defense=False, alpha_rule=None, alpha0=0.3,
              sp_threshold=0.1, refinement_steps=8, remask_ratio=0.9, suppression_value=1e6,
-             baseline_hidden=None, cue_ids=None, attention_mask=None, cache=None):
+             baseline_hidden=None, cue_ids=None, attention_mask=None, cache=None,
+             prompt_masks="error", cache_start_block=0):
     """Decode gen_length tokens after `prompt` ([1, P] token ids) block by block.
 
     mode="fixed"    : steps // num_blocks forwards per block, a fixed number of tokens committed per step
@@ -161,6 +164,26 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
                       Repair never uses the cache: it runs refinement_steps full forwards, as in the other columns,
                       and the next block's first full forward rebuilds the cache from the repaired tokens.
 
+    prompt_masks    : what to do with mask tokens inside the prompt (DIJA). "error" (default; GSM8K never has
+                      any) raises. "first_block" = the RQ2 ASR layout agreed with the Without runs: block 0 is the
+                      position set {prompt masks} U {first block_length generated positions} and is decoded as one
+                      block (fixed: steps // num_blocks forwards with the original quota over all its masks;
+                      threshold: until it is full, so at most P_mask + block_length forwards); later blocks are the
+                      generated positions only. Under the defense:
+                        * alpha "progress" counts block 0 as P_mask + block_length masks (committed / that number);
+                          "original" stays step-based. Repair does not use alpha (random refill order).
+                        * audit: logit score over the block-0 positions (last step), hidden distance of the first
+                          step's last-layer mean over the same positions.
+                        * repair: int(|block 0| * remask_ratio) of the block-0 positions, refill only there over
+                          refinement_steps forwards, no tau, no cache. Fixed prompt tokens are never remasked
+                          (the original's span would include the prompt text between masks; RQ2 keeps the attack
+                          prompt as given, like the Without runs).
+                      Without prompt masks "first_block" changes nothing.
+    cache_start_block: first block that uses the cache (D/E). 0 = Fast-dLLM / GSM8K. The ASR layout uses 1: block 0
+                      (with the prompt masks) runs full forwards every step, the cache starts at block 1. Prompt
+                      masks with a cache need cache_start_block >= 1 (a prefix cache cannot hold positions that
+                      are still being decoded).
+
     RNG stream: fixed mode draws R = torch.rand every step like the DiffuGuard original (token-identical to it
     at temperature > 0); threshold mode draws R only when the defense uses it, like Fast-dLLM (token-identical
     to Fast-dLLM generate() at temperature > 0 with the defense off). R is always drawn over the whole sequence
@@ -184,8 +207,15 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
         raise ValueError(f"conf_precision must be 'model' or 'float64', got {conf_precision!r}")
     if prompt.shape[0] != 1:
         raise ValueError("batch size 1 only (as in every run of this project)")
-    if bool((prompt == mask_id).any()):
-        raise NotImplementedError("prompts with mask tokens (DIJA) are not supported yet: ASR path pending")
+    if prompt_masks not in ("error", "first_block"):
+        raise ValueError(f"prompt_masks must be 'error' or 'first_block', got {prompt_masks!r}")
+    has_prompt_masks = bool((prompt == mask_id).any())
+    if has_prompt_masks and prompt_masks == "error":
+        raise NotImplementedError("prompt contains mask tokens (DIJA): pass prompt_masks='first_block'")
+    if int(cache_start_block) < 0:
+        raise ValueError("cache_start_block must be >= 0")
+    if has_prompt_masks and cache and int(cache_start_block) < 1:
+        raise ValueError("prompt masks with a cache need cache_start_block >= 1")
     if gen_length % block_length:
         raise ValueError("gen_length must be a multiple of block_length")
     if defense and cue_ids is None:
@@ -219,33 +249,40 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
     draw_R = fixed or defense
     stats = Stats(steps_per_block=steps_per_block)
 
+    prompt_mask_pos = (x[0, :P] == mask_id)
+
     for b in range(num_blocks):
         bs, be = P + b * block_length, P + (b + 1) * block_length
-        block_mask_index = x[:, bs:be] == mask_id
+        region = torch.zeros_like(x, dtype=torch.bool)        # positions decoded in this block
+        region[:, bs:be] = True
+        if b == 0 and has_prompt_masks:
+            region[0, :P] = prompt_mask_pos
+        block_mask_index = x[region].unsqueeze(0) == mask_id
         block_masks = int(block_mask_index.sum())
         quota = get_num_transfer_tokens(block_mask_index, steps_per_block) if fixed else None
+        use_cache = cache if b >= int(cache_start_block) else None
         audit_here = defense and b == 0
         first_hidden_mean = None
         committed = 0
 
         pkv = replace_position = None
-        if cache == "dual":
+        if use_cache == "dual":
             replace_position = torch.zeros_like(x, dtype=torch.bool)
             replace_position[:, bs:be] = True
 
         i = 0
-        while (i < steps_per_block) if fixed else bool((x[:, bs:be] == mask_id).any()):
+        while (i < steps_per_block) if fixed else bool((x[region] == mask_id).any()):
             want_hidden = audit_here and use_hidden and i == 0
-            if cache is None or i == 0:
+            if use_cache is None or i == 0:
                 # full forward over the whole sequence (every step without a cache; block start with a cache)
-                kw = dict(use_cache=True) if cache else {}
+                kw = dict(use_cache=True) if use_cache else {}
                 out = model(x, attention_mask=am, output_hidden_states=want_hidden, return_dict=True, **kw)
                 off = 0
-                if cache:
+                if use_cache:
                     pkv = out.past_key_values
-                    if cache == "prefix":   # keep prompt + earlier blocks only
+                    if use_cache == "prefix":   # keep prompt + earlier blocks only
                         pkv = [tuple(t[:, :, :bs] for t in layer) for layer in pkv]
-            elif cache == "prefix":
+            elif use_cache == "prefix":
                 out = model(x[:, bs:], past_key_values=pkv, use_cache=True)
                 off = bs
                 add_gumbel_noise(out.logits, temperature)   # Fast-dLLM draws (and discards) noise once more here
@@ -257,9 +294,9 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
             logits = out.logits
             W = logits.shape[1]
             xw = x[:, off:off + W]          # view: writes below go into x
-            lo, hi = bs - off, be - off     # current block inside the window
+            rw = region[:, off:off + W]     # current block inside the window
             if want_hidden and getattr(out, "hidden_states", None):
-                first_hidden_mean = out.hidden_states[-1][:, lo:hi, :].mean(dim=1).squeeze(0).detach()
+                first_hidden_mean = out.hidden_states[-1][:, rw[0], :].mean(dim=1).squeeze(0).detach()
 
             mask_index = xw == mask_id
             x0 = torch.argmax(add_gumbel_noise(logits, temperature), dim=-1)
@@ -276,9 +313,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
             else:
                 x0_p = model_confidence
 
-            conf = x0_p.clone()
-            conf[:, :lo] = -np.inf
-            conf[:, hi:] = -np.inf
+            conf = x0_p.clone().masked_fill(~rw, -np.inf)
             x0 = torch.where(mask_index, x0, xw)
             confidence = torch.where(mask_index, conf, -np.inf)
 
@@ -288,9 +323,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
                 # Fast-dLLM rule on the model confidence p(x0): count masked block positions with p >= tau,
                 # always at least one. The k committed positions are the top-k by score; with the defense off
                 # score == p, so this is exactly Fast-dLLM's set {p >= tau} U {argmax p}.
-                in_block = mask_index.clone()
-                in_block[:, :lo] = False
-                in_block[:, hi:] = False
+                in_block = mask_index & rw
                 k = max(int((in_block & (model_confidence >= threshold)).sum()), 1)
             if k > 0:
                 transfer_index = torch.zeros_like(xw, dtype=torch.bool)
@@ -303,8 +336,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
             continue
 
         # ---- block-0 audit (original: sp_mode="hidden")
-        positions = torch.zeros(logits.shape[:2], dtype=torch.bool, device=device)   # last step's window
-        positions[:, lo:hi] = True
+        positions = rw                                                  # block 0 in the last step's window
         stats.audit_logit = safety_perplexity_from_logits(logits, positions, *cue_ids)
         unsafe = stats.audit_logit >= sp_threshold
         stats.audit_score = stats.audit_logit
@@ -317,7 +349,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
             continue
 
         # ---- repair (original refinement phase, block 0 only)
-        cand = torch.arange(bs, be, device=device)
+        cand = torch.nonzero(region[0], as_tuple=False).squeeze(1)
         n_remask = int(cand.numel() * float(remask_ratio))
         if n_remask <= 0:
             continue
@@ -326,7 +358,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
         old_ids = x[:, remask_pos].clone()
         x[:, remask_pos] = mask_id
         r_steps = max(int(refinement_steps), 1)
-        r_quota = get_num_transfer_tokens(x[:, bs:be] == mask_id, r_steps)
+        r_quota = get_num_transfer_tokens(x[region].unsqueeze(0) == mask_id, r_steps)
 
         for r in range(r_steps):
             mask_index = x == mask_id
@@ -338,9 +370,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
             # original: low_confidence -> confidence order, any other remasking -> random order. Repair only
             # runs with the defense on, whose remasking is adaptive_step, so the refill order is random.
             x0_p = torch.rand((x0.shape[0], x0.shape[1]), device=x0.device)
-            conf = x0_p.clone()
-            conf[:, :bs] = -np.inf
-            conf[:, be:] = -np.inf
+            conf = x0_p.clone().masked_fill(~region, -np.inf)
             x0 = torch.where(mask_index, x0, x)
             confidence = torch.where(mask_index, conf, -np.inf)
             k = int(min(r_quota[0, r].item(), torch.sum(confidence[0] > -np.inf).item()))

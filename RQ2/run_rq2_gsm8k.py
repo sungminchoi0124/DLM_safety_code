@@ -153,8 +153,8 @@ def _field(r, k):
     if k in r:
         return r[k]
     if k == "nfe_total":
-        return r["nfe_gen"] + r["nfe_repair"] + r["nfe_baseline"]
-    return {"n_masks_left": 0, "baseline_tries": 1 if r.get("nfe_baseline") else 0}[k]
+        return r["nfe_gen"] + r["nfe_repair"] + r["nfe_baseline"] + r.get("nfe_audit_calls", 0)
+    return {"n_masks_left": 0, "nfe_audit_calls": 0, "baseline_tries": 1 if r.get("nfe_baseline") else 0}[k]
 
 
 class _Capture(logging.Handler):
@@ -211,7 +211,8 @@ def raw_record(r, *, rid, args, s, seed):
         "n_masks": _field(r, "gen_length") - _field(r, "n_masks_left") if "gen_length" in r else None,
         "n_masks_left": _field(r, "n_masks_left"),
         "nfe": _field(r, "nfe_total"), "nfe_gen": r["nfe_gen"], "nfe_cached": r["nfe_cached"],
-        "nfe_audit": r["nfe_baseline"], "nfe_repair": r["nfe_repair"], "nfe_total": _field(r, "nfe_total"),
+        "nfe_baseline": r["nfe_baseline"], "nfe_audit": _field(r, "nfe_audit_calls"), "nfe_repair": r["nfe_repair"],
+        "nfe_total": _field(r, "nfe_total"),
         "wall_ms": int(round(r["wall_ms"])),
         "audit_score": r["audit_score"], "audit_logit": r["audit_logit"], "audit_hidden": r["audit_hidden"],
         "audit_unsafe": r["audit_unsafe"] if s["defense"] else None,
@@ -259,14 +260,15 @@ def run_items(items, spec, tokenizer, model, s, jbl, *, seed=0, is_instruct=True
         if n_masks_left:                            # recorded, not fatal: the count goes to the summary
             echo(f"WARNING doc {item['doc_id']}: {n_masks_left} masks left after generation")
         response, n_tokens = rq1.postprocess(tokenizer, tail, item["until"])
-        nfe_audit = int(s["defense"])               # the baseline hidden forward; the audit itself reuses logits
+        nfe_baseline = int(s["defense"])            # the baseline hidden forward (inside wall_ms, retries too)
         rec = {"doc_id": item["doc_id"], "response": response, "target": item["target"],
                **rq1.score(response, item["target"], spec),
                "prompt_tokens": int(input_ids.shape[1]), "n_tokens": n_tokens,
                "gen_length": int(tail.shape[0]), "n_masks_left": n_masks_left,
                "nfe_gen": st.nfe_gen, "nfe_cached": st.nfe_cached, "nfe_repair": st.nfe_repair,
-               "nfe_baseline": nfe_audit, "nfe_audit": nfe_audit,
-               "nfe_total": st.nfe_gen + st.nfe_repair + nfe_audit, "baseline_tries": baseline_tries,
+               "nfe_baseline": nfe_baseline, "nfe_audit_calls": st.nfe_audit,
+               "nfe_total": st.nfe_gen + nfe_baseline + st.nfe_audit + st.nfe_repair,
+               "baseline_tries": baseline_tries,
                "wall_ms": round(1000 * dt, 1),
                "audit_score": st.audit_score, "audit_logit": st.audit_logit, "audit_hidden": st.audit_hidden,
                "audit_unsafe": st.audit_unsafe, "repaired": st.repaired}
@@ -292,7 +294,7 @@ def summarize(records):
     out["invalid_flexible"] = inv
     out["invalid_rate"] = round(inv / max(n, 1), 4)          # non-answer rate
     out["repair_rate"] = round(sum(bool(r["repaired"]) for r in records) / max(n, 1), 4)
-    for k in ("nfe_gen", "nfe_cached", "nfe_repair", "nfe_baseline", "nfe_total", "wall_ms"):
+    for k in ("nfe_gen", "nfe_cached", "nfe_baseline", "nfe_audit_calls", "nfe_repair", "nfe_total", "wall_ms"):
         tot = sum(_field(r, k) for r in records)
         out[f"total_{k}"] = round(tot, 1)
         out[f"mean_{k}"] = round(tot / max(n, 1), 2)
