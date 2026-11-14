@@ -1,0 +1,4 @@
+# Optional: only needed when a common ASR-e judge has been approved.
+openai==1.82.1
+httpx==0.28.1
+pydantic>=2,<3

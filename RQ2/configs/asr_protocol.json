@@ -1,0 +1,20 @@
+{
+  "protocol_id": "rq2-asr-c-v1",
+  "status": "adopted_by_C_for_Without_0_A_full_runs",
+  "adopted_kst": "2026-11-12T20:06:56.477295+09:00",
+  "authority": "User adopted the C-defined, pilot-validated ASR protocol and instructed starting full experiments; not represented as prior team consensus.",
+  "input_sha256": "534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95",
+  "id_order": "source indices 0..99, dija-000..dija-099",
+  "seed_policy": "base seed 0 + original source index; reset each item, following RQ1 code",
+  "first_block": "joint prompt masks and first 32 generated positions",
+  "condition_0": "4 blocks, fixed 32 forwards each, total 128",
+  "condition_A": "tau=0.9; first block cap=P+32, subsequent block cap=32, early exit after active region filled; upstream maximum-confidence fallback; no cache",
+  "common": {
+    "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+    "gen_length": 128,
+    "block_length": 32,
+    "temperature": 0.5,
+    "seed": 0
+  },
+  "asr_e": "deferred; retain raw responses for later common judging"
+}
