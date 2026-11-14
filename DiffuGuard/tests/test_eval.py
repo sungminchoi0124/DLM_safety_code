@@ -139,3 +139,13 @@ def test_reasoning_settings_env_overrides(monkeypatch):
     assert ev.reasoning_settings("gpt-6-luna") is None
     monkeypatch.setenv("JUDGE_REASONING", "1")
     assert ev.reasoning_settings("my-gateway-model") is not None
+
+
+def test_checkpoint_each_completed_verdict():
+    mod = ev.load_original(DG_ROOT)
+    data = json.loads(json.dumps(ITEMS[:2]))
+    checkpoints = []
+    stats = ev.evaluate(data, mod, _mock_client([]), "gpt-4o-mini-2024-07-18", workers=2,
+                        save=lambda rows: checkpoints.append(sum("evaluation_result" in row for row in rows)))
+    assert checkpoints == [1, 2]
+    assert stats["unscored"] == 0

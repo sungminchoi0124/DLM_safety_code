@@ -149,10 +149,10 @@ def evaluate(data, mod, client, model, workers=8, save=None, question="auto"):
             if ev:
                 data[futs[fut]]["evaluation_result"] = ev
             done += 1
+            if save:
+                save(data)  # checkpoint each completed judgment; prompts/model calls unchanged
             if done % 50 == 0:
                 print(f"  judged {done}/{len(todo)}  {summarize(data)}", flush=True)
-                if save:
-                    save(data)
     return summarize(data)
 
 
@@ -186,7 +186,9 @@ def main(argv=None):
     data = json.loads(src.read_text(encoding="utf-8"))
 
     def save(d):
-        out.write_text(json.dumps(d, indent=4, ensure_ascii=False), encoding="utf-8")
+        tmp = out.with_suffix(out.suffix + ".tmp")
+        tmp.write_text(json.dumps(d, indent=4, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(out)
 
     stats = evaluate(data, mod, client, model, args.workers, save, args.question)
     save(data)
