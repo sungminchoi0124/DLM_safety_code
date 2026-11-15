@@ -11,9 +11,9 @@ import pytest
 import torch
 
 import run_rq2_gsm8k as runner
-from conftest import FakeTokenizer
+from .conftest import FakeTokenizer
 from src import combined
-from test_s4_cache import FakeCacheModel
+from .test_s4_cache import FakeCacheModel
 
 SPEC = {   # lm_eval gsm8k filters / metric settings (same structure as the prompt file)
     "filters": [
@@ -284,3 +284,87 @@ def test_wall_ms_includes_the_baseline_forward(jbl):
     recs = runner.run_items(ITEMS[:1], SPEC, Tok(), FakeCacheModel().eval(), _settings("A", "dg"), Slow(jbl, 0),
                             echo=lambda m: None)
     assert recs[0]["wall_ms"] >= 300
+
+
+def test_manifest_ids_and_existing_prompt_file_are_reused():
+    args = runner.build_parser().parse_args(["--column", "A", "--defense", "none"])
+    items, spec, digest = runner.load_items(args)
+    rows = runner.DEFAULT_IDS.read_text(encoding="utf-8").splitlines()[1:]
+    expected = [(row.split("\t")[0], int(row.split("\t")[1])) for row in rows if row.strip()]
+    assert [(item["item_id"], item["doc_id"]) for item in items] == expected
+    assert len(items) == 250 and spec["num_fewshot"] == 5
+    assert digest == runner.rq1.PROMPTS_SHA256
+    assert items[1]["item_id"] == "gsm8k-001" and items[1]["doc_id"] == 2
+    s = runner.settings(args)
+    record = dict(doc_id=2, item_id=items[1]["item_id"], response="18", n_tokens=1,
+                  gen_length=256, n_masks_left=0, nfe_total=8, nfe_gen=8, nfe_cached=0,
+                  nfe_baseline=0, nfe_repair=0, audit_score=None, audit_logit=None,
+                  audit_hidden=None, audit_unsafe=False, repaired=False, pred_flexible="18",
+                  pred_strict="18", target="18", correct_flexible=True, correct_strict=True, wall_ms=1)
+    assert runner.raw_record(record, rid="rid", args=args, s=s, seed=0)["item_id"] == "gsm8k-001"
+
+
+def test_fast_model_loader_delegates_to_shared_loader(monkeypatch, tmp_path):
+    args = runner.build_parser().parse_args(["--column", "A", "--defense", "none",
+                                            "--fast_dllm_root", "pinned-checkout"])
+    model, tokenizer = object(), object()
+    calls = []
+
+    def load(model_dir, fast_root):
+        calls.append((model_dir, fast_root))
+        return model, tokenizer, object()
+
+    monkeypatch.setattr(runner.fast_upstream, "load_model", load)
+    tok, loaded, source = runner.load_model(args, str(tmp_path), runner.fast_upstream.MODEL_REVISION)
+    assert (tok, loaded) == (tokenizer, model)
+    assert calls == [(str(tmp_path), "pinned-checkout")]
+    assert runner.fast_upstream.FAST_COMMIT in source
+    with pytest.raises(SystemExit, match="model revision"):
+        runner.load_model(args, str(tmp_path), "different-revision")
+    assert len(calls) == 1
+
+
+class SyntheticJbl:
+    """Prompt plumbing for accounting tests that do not require the external submodule."""
+
+    def __init__(self, fail_after_forward=False):
+        self.fail_after_forward = fail_after_forward
+
+    def build_chat_prompt(self, tokenizer, context, is_instruct, system_prompt):
+        return tokenizer.apply_chat_template([{"role": "user", "content": context}],
+                                             tokenize=False, add_generation_prompt=True)
+
+    def get_tokenized_input(self, prompt, tokenizer, device):
+        encoded = tokenizer(prompt, return_tensors="pt")
+        return encoded["input_ids"].to(device), encoded["attention_mask"].to(device)
+
+    def compute_baseline_hidden(self, *, model, **kwargs):
+        ids = torch.tensor([[2, 3]], device=model.device)
+        out = model(ids, output_hidden_states=True)
+        if self.fail_after_forward:
+            self.fail_after_forward = False
+            import logging
+            logging.info("[Baseline] failed after a completed test forward")
+            return None
+        return out.hidden_states[-1].mean(dim=1).squeeze(0)
+
+
+def test_measured_nfe_includes_failed_baseline_forward():
+    model = Counting(FakeCacheModel().eval())
+    recs = runner.run_items(ITEMS[:1], SPEC, Tok(), model, _settings("A", "dg"),
+                            SyntheticJbl(fail_after_forward=True), echo=lambda message: None)
+    rec = recs[0]
+    assert rec["baseline_tries"] == rec["nfe_baseline"] == 2
+    assert rec["nfe_total"] == model.n == rec["nfe_gen"] + rec["nfe_repair"] + 2
+    assert not model._forward_pre_hooks
+
+
+def test_without_cache_accounting_uses_measured_forwards():
+    model = Counting(FakeCacheModel().eval())
+    recs = runner.run_items(ITEMS[:1], SPEC, Tok(), model, _settings("D", "none"),
+                            SyntheticJbl(), echo=lambda message: None)
+    rec = recs[0]
+    assert rec["nfe_total"] == rec["nfe_gen"] == model.n
+    assert rec["nfe_baseline"] == rec["nfe_repair"] == rec["n_masks_left"] == 0
+    assert 0 < rec["nfe_cached"] <= rec["nfe_gen"]
+    assert not model._forward_pre_hooks

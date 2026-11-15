@@ -44,13 +44,14 @@ import yaml
 RQ2_DIR = Path(__file__).resolve().parent
 REPO = RQ2_DIR.parent
 DG_DIR = REPO / "DiffuGuard"
-for p in (RQ2_DIR, DG_DIR):
+for p in (REPO, RQ2_DIR, DG_DIR):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
 import run_generate as rg          # noqa: E402  (DiffuGuard/run_generate.py: seeding, original-code import, git)
 import run_gsm8k as rq1            # noqa: E402  (DiffuGuard/run_gsm8k.py: prompts, scoring, post-processing)
 from src import combined           # noqa: E402
+from RQ2 import upstream as fast_upstream  # noqa: E402
 
 COLUMNS = {
     "0": dict(mode="fixed", threshold=None, cache=None),
@@ -79,7 +80,7 @@ def build_parser():
     p.add_argument("--fast_dllm_root", default=os.environ.get("FAST_DLLM_ROOT"))
     p.add_argument("--model_path")
     p.add_argument("--model_revision")
-    p.add_argument("--prompt_file", default=str(rq1.DEFAULT_PROMPTS))
+    p.add_argument("--prompt_file", default=str(DG_DIR / "data" / "gsm8k_5shot_lmeval.json"))
     p.add_argument("--prompt_file_sha256", default=rq1.PROMPTS_SHA256)
     p.add_argument("--output_dir", default=str(DEFAULT_OUT))
     p.add_argument("--tag")
@@ -146,6 +147,25 @@ def run_id(args):
     return rid
 
 
+def load_items(args):
+    """Reuse RQ1 selection while retaining the manifest's item_id/source_key mapping."""
+    ids_path = Path(args.doc_ids).resolve() if args.doc_ids else None
+    items, spec, digest = rq1.load_items({
+        "prompt_file": args.prompt_file, "prompt_file_sha256": args.prompt_file_sha256,
+        "doc_ids": str(ids_path) if ids_path else None, "limit": None})
+    item_ids = {}
+    if ids_path:
+        import csv
+        with ids_path.open(encoding="utf-8", newline="") as handle:
+            item_ids = {int(row["source_key"]): row["item_id"]
+                        for row in csv.DictReader(handle, delimiter="\t")}
+    if args.limit:
+        items = items[:args.limit]
+    items = [{**item, "item_id": item_ids.get(item["doc_id"], f"gsm8k-{item['doc_id']:03d}")}
+             for item in items]
+    return items, spec, digest
+
+
 # --------------------------------------------------------------------------- generation (model-agnostic, CPU-testable)
 
 def _field(r, k):
@@ -201,7 +221,7 @@ def raw_record(r, *, rid, args, s, seed):
     col = COLUMNS[args.column]
     text = r["response"]
     return {
-        "run_id": rid, "item_id": f"gsm8k-{r['doc_id']:03d}", "pair_id": None, "set": "gsm8k",
+        "run_id": rid, "item_id": r.get("item_id", f"gsm8k-{r['doc_id']:03d}"), "pair_id": None, "set": "gsm8k",
         "speed_level": None,                       # RQ1 level; RQ2 cells are named by column instead
         "column": args.column, "accel": col["mode"], "threshold": s.get("threshold"), "cache": s.get("cache"),
         "steps": s.get("steps") if col["mode"] == "fixed" else r["nfe_gen"],
@@ -239,7 +259,8 @@ def run_items(items, spec, tokenizer, model, s, jbl, *, seed=0, is_instruct=True
     records = []
     for pos, item in enumerate(items):
         if item["doc_id"] in done:
-            records.append(done[item["doc_id"]])
+            record = done[item["doc_id"]]
+            records.append({**record, "item_id": item.get("item_id", record.get("item_id", f"gsm8k-{item['doc_id']:03d}"))})
             continue
         rg.set_seed(seed + item["doc_id"])          # by question, as RQ1: subsets match the full run
         prompt = jbl.build_chat_prompt(tokenizer, item["context"], is_instruct, None)
@@ -248,10 +269,24 @@ def run_items(items, spec, tokenizer, model, s, jbl, *, seed=0, is_instruct=True
             torch.cuda.synchronize()
         t0 = time.perf_counter()
         baseline_hidden, baseline_tries = None, 0
-        if s["defense"]:
-            baseline_hidden, baseline_tries = baseline_hidden_with_retry(jbl, item, tokenizer, model, is_instruct, echo)
-        out, st = combined.generate(model, input_ids, attention_mask=attention_mask, temperature=s["temperature"],
-                                    baseline_hidden=baseline_hidden, cue_ids=cue_ids, **gen_kw)
+        forwards = [0]
+
+        def count_forward(_module, _inputs):
+            forwards[0] += 1
+
+        handle = model.register_forward_pre_hook(count_forward)
+        try:
+            if s["defense"]:
+                baseline_hidden, baseline_tries = baseline_hidden_with_retry(jbl, item, tokenizer, model, is_instruct, echo)
+            nfe_baseline = forwards[0]
+            out, st = combined.generate(model, input_ids, attention_mask=attention_mask, temperature=s["temperature"],
+                                        baseline_hidden=baseline_hidden, cue_ids=cue_ids, **gen_kw)
+        finally:
+            handle.remove()
+        nfe_total = forwards[0]
+        expected_nfe = st.nfe_gen + nfe_baseline + st.nfe_audit + st.nfe_repair
+        if nfe_total != expected_nfe:
+            raise RuntimeError(f"doc {item['doc_id']}: measured NFE {nfe_total} != decoder accounting {expected_nfe}")
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         dt = time.perf_counter() - t0
@@ -260,14 +295,14 @@ def run_items(items, spec, tokenizer, model, s, jbl, *, seed=0, is_instruct=True
         if n_masks_left:                            # recorded, not fatal: the count goes to the summary
             echo(f"WARNING doc {item['doc_id']}: {n_masks_left} masks left after generation")
         response, n_tokens = rq1.postprocess(tokenizer, tail, item["until"])
-        nfe_baseline = int(s["defense"])            # the baseline hidden forward (inside wall_ms, retries too)
-        rec = {"doc_id": item["doc_id"], "response": response, "target": item["target"],
+        rec = {"doc_id": item["doc_id"], "item_id": item.get("item_id", f"gsm8k-{item['doc_id']:03d}"),
+               "response": response, "target": item["target"],
                **rq1.score(response, item["target"], spec),
                "prompt_tokens": int(input_ids.shape[1]), "n_tokens": n_tokens,
                "gen_length": int(tail.shape[0]), "n_masks_left": n_masks_left,
                "nfe_gen": st.nfe_gen, "nfe_cached": st.nfe_cached, "nfe_repair": st.nfe_repair,
                "nfe_baseline": nfe_baseline, "nfe_audit_calls": st.nfe_audit,
-               "nfe_total": st.nfe_gen + nfe_baseline + st.nfe_audit + st.nfe_repair,
+               "nfe_total": nfe_total,
                "baseline_tries": baseline_tries,
                "wall_ms": round(1000 * dt, 1),
                "audit_score": st.audit_score, "audit_logit": st.audit_logit, "audit_hidden": st.audit_hidden,
@@ -309,27 +344,24 @@ def summarize(records):
 # --------------------------------------------------------------------------- model
 
 def load_model(args, model_path, revision):
-    from transformers import AutoConfig, AutoModel, AutoTokenizer
+    if args.model_class == "fastdllm":
+        if revision != fast_upstream.MODEL_REVISION:
+            raise SystemExit(f"Fast-dLLM needs model revision {fast_upstream.MODEL_REVISION}, got {revision}")
+        if not args.fast_dllm_root:
+            raise SystemExit("--model_class fastdllm needs --fast_dllm_root / FAST_DLLM_ROOT")
+        if not Path(model_path).is_dir():
+            raise SystemExit("--model_class fastdllm needs --model_path pointing to an existing local model directory")
+        try:
+            model, tokenizer, _ = fast_upstream.load_model(model_path, args.fast_dllm_root)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        return tokenizer, model, f"Fast-dLLM LLaDAModelLM ({fast_upstream.FAST_COMMIT})"
+
+    from transformers import AutoModel, AutoTokenizer
     kw = {} if Path(model_path).is_dir() else {"revision": revision}
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True, **kw)
-    if args.model_class == "auto":
-        model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16, **kw)
-        source = "transformers.AutoModel (trust_remote_code)"
-    else:
-        root = Path(args.fast_dllm_root or "")
-        llada = root / "v1" / "llada"
-        if not (llada / "model" / "modeling_llada.py").exists():
-            raise SystemExit("--model_class fastdllm needs --fast_dllm_root / FAST_DLLM_ROOT (Fast-dLLM a9b81e4)")
-        sys.path.insert(0, str(llada))
-        from model.modeling_llada import LLaDAModelLM      # same loading as Fast-dLLM eval_llada.py
-        # no trust_remote_code: Fast-dLLM registers its own LLaDAConfig for "llada" (as eval_llada.py loads it);
-        # the checkpoint's remote config lacks fields LLaDAModelLM reads (train_max_sequence_length)
-        config = AutoConfig.from_pretrained(model_path, **kw)
-        if type(config).__module__ != "model.configuration_llada":
-            raise SystemExit(f"expected Fast-dLLM LLaDAConfig, got {type(config).__module__}")
-        model = LLaDAModelLM.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16,
-                                             config=config, **kw)
-        source = f"Fast-dLLM LLaDAModelLM ({rg.git_commit(root)})"
+    model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16, **kw)
+    source = "transformers.AutoModel (trust_remote_code)"
     return tokenizer, model.to("cuda").eval(), source
 
 
@@ -348,11 +380,7 @@ def main(argv=None):
     with open(DG_CONFIG, "r", encoding="utf-8") as f:
         dg_cfg = yaml.safe_load(f)
     model_path = args.model_path or dg_cfg["model_path"]
-    items, spec, prompt_sha = rq1.load_items({
-        "prompt_file": args.prompt_file, "prompt_file_sha256": args.prompt_file_sha256,
-        "doc_ids": str(Path(args.doc_ids).resolve()) if args.doc_ids else None, "limit": None})
-    if args.limit:
-        items = items[: args.limit]
+    items, spec, prompt_sha = load_items(args)
     dg_root = rg.resolve(dg_cfg["diffuguard_root"])
     jbl = rg.import_original(dg_root)
 
@@ -388,7 +416,14 @@ def main(argv=None):
         **summarize(records), "wall_seconds_this_invocation": round(wall, 1),
         "settings": s, "seed": args.seed, "seeding": "set_seed(seed + doc_id) before each item",
         "doc_ids": args.doc_ids, "limit": args.limit, "prompt_file_sha256": prompt_sha,
+        "doc_ids_sha256": rg.sha256_file(args.doc_ids) if args.doc_ids else None,
+        "selected_doc_ids": [item["doc_id"] for item in items],
+        "selected_item_ids": [item["item_id"] for item in items],
+        "prompt_source": {key: spec.get(key) for key in ("task", "num_fewshot", "fewshot_seed", "lm_eval_version")},
         "model_class": model_source, "model_path": model_path, "model_revision": revision,
+        "fast_dllm_commit": fast_upstream.FAST_COMMIT if args.model_class == "fastdllm" else None,
+        "model_dtype": str(next(model.parameters()).dtype),
+        "attention_backend": ("flash_attn" if model.model.transformer.blocks[0].flash_attn_func else "torch_sdpa"),
         "team_repo_commit": rg.git_commit(REPO), "team_repo_dirty": rg.git_dirty(REPO),
         "diffuguard_commit": rg.git_commit(dg_root),
         "gpu_name": torch.cuda.get_device_name(0), "torch_version": torch.__version__,

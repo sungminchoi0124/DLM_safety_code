@@ -19,7 +19,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from conftest import MASK_ID, FakeModel
+from .conftest import MASK_ID, FakeModel
 from src import combined
 
 CASES = [(32, 8), (32, 32), (64, 16)]

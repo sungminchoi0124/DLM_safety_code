@@ -17,7 +17,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from conftest import MASK_ID
+from .conftest import MASK_ID
 from src import combined
 
 CASES = [(32, 8), (32, 32), (64, 16)]           # gen_length, block_length

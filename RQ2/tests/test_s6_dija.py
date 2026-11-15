@@ -16,9 +16,9 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from conftest import DG_ROOT, MASK_ID, FakeModel
+from .conftest import DG_ROOT, MASK_ID, FakeModel
 from src import combined
-from test_s4_cache import ExactCacheModel
+from .test_s4_cache import ExactCacheModel
 
 BASE_HIDDEN = torch.ones(8)
 GEN, BLOCK = 32, 8                        # 4 blocks, like the ASR layout 128 / 32 (small for CPU)

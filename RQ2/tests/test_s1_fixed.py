@@ -9,7 +9,7 @@ import pytest
 import torch
 
 import semi_ar
-from conftest import DG_ROOT, MASK_ID
+from .conftest import DG_ROOT, MASK_ID
 from src import combined
 
 CASES = [(32, 32, 8), (16, 32, 8), (8, 32, 8), (4, 32, 8), (64, 64, 16), (8, 64, 16), (16, 16, 16)]
