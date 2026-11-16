@@ -1,0 +1,868 @@
+{
+  "columns": {
+    "0": {
+      "archive": "RQ2/outputs/backups/without0_full250/rq2-without0-full250-results.tar.gz",
+      "archive_bytes": 176177,
+      "archive_sha256": "19f52a96e52e09164ba6f5c63a268b1f8c07795fb375b00453dc6d9dd91dd7ac",
+      "files": {
+        "workspace_full250_0_none/run.log": {
+          "bytes": 21092,
+          "sha256": "220a80e42492dc2a418e1677aa40915002b60d3692d7222793aa828da3195fd9"
+        },
+        "workspace_full250_0_none/rq2-gsm8k-0-none-s0_limit250.json": {
+          "bytes": 293966,
+          "sha256": "3121766c87ba474c9e88890a91dca56c0a7bec16733ea9cbfd43506e10abf2a8"
+        },
+        "workspace_full250_0_none/rq2-gsm8k-0-none-s0_limit250.raw.jsonl": {
+          "bytes": 450066,
+          "sha256": "3a9e6b2f8aed3d0f459d436e22dfa11aa3019b0f7dfc270aa63e94cda03336b6"
+        },
+        "workspace_full250_0_none/rq2-gsm8k-0-none-s0_limit250.meta.json": {
+          "bytes": 164376,
+          "sha256": "fbc5561bc1953da283db6e7ab896fffe15e165a3d44e1e6e0bb677e532c3db45"
+        }
+      },
+      "validation": "passed",
+      "metrics": {
+        "n": 250,
+        "accuracy_flexible": 77.6,
+        "accuracy_flexible_ci95": [
+          72.0,
+          82.3
+        ],
+        "accuracy_strict": 40.8,
+        "accuracy_strict_ci95": [
+          34.9,
+          47.0
+        ],
+        "invalid_rate": 0.0,
+        "repair_rate": 0.0,
+        "total_nfe_gen": 64000,
+        "mean_nfe_gen": 256.0,
+        "total_nfe_cached": 0,
+        "mean_nfe_cached": 0.0,
+        "total_nfe_baseline": 0,
+        "mean_nfe_baseline": 0.0,
+        "total_nfe_audit_calls": 0,
+        "mean_nfe_audit_calls": 0.0,
+        "total_nfe_repair": 0,
+        "mean_nfe_repair": 0.0,
+        "total_nfe_total": 64000,
+        "mean_nfe_total": 256.0,
+        "total_wall_ms": 23612735.0,
+        "mean_wall_ms": 94450.94,
+        "total_n_masks_left": 0,
+        "tokens_per_second": 2.449,
+        "wall_seconds_this_invocation": 23614.5
+      },
+      "n_tokens": 57833,
+      "settings": {
+        "gen_length": 256,
+        "block_length": 32,
+        "temperature": 0.0,
+        "steps": 256,
+        "mode": "fixed",
+        "threshold": null,
+        "cache": null,
+        "defense": false
+      },
+      "environment": {
+        "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+        "fast_dllm_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+        "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+        "gpu_name": "NVIDIA GeForce RTX 3090",
+        "torch_version": "2.3.1+cu121",
+        "transformers_version": "4.46.2",
+        "model_dtype": "torch.bfloat16",
+        "attention_backend": "torch_sdpa",
+        "team_repo_commit": "unknown",
+        "team_repo_dirty": null,
+        "started_utc": "2026-11-15T06:36:26.760633+00:00",
+        "finished_utc": "2026-11-15T13:10:01.315525+00:00",
+        "output_json": "/root/DLM_safety_code/RQ2/outputs/workspace_full250_0_none/rq2-gsm8k-0-none-s0_limit250.json",
+        "raw_jsonl": "/root/DLM_safety_code/RQ2/outputs/workspace_full250_0_none/rq2-gsm8k-0-none-s0_limit250.raw.jsonl"
+      },
+      "log_progress": {
+        "workspace_full250_0_none/run.log": {
+          "count": 250,
+          "first": 1,
+          "last": 250
+        }
+      },
+      "raw_wall_rounding_difference_ms": 2.0
+    },
+    "A": {
+      "archive": "RQ2/outputs/backups/withoutA_full250/rq2-withoutA-full250-results.tar.gz",
+      "archive_bytes": 182377,
+      "archive_sha256": "11a2ecffd5ef91effa696e4343c5bbce8cb8fa2e07e14354ea8a610c64126333",
+      "files": {
+        "workspace_full250_A_none/rq2-gsm8k-A-none-s0_limit250.json": {
+          "bytes": 294161,
+          "sha256": "b456c4e78499ed7b40e9203b800121ea6b1ec4f459380656d732d364af286f39"
+        },
+        "workspace_full250_A_none/rq2-gsm8k-A-none-s0_limit250.meta.json": {
+          "bytes": 163768,
+          "sha256": "327c04538f8d09694a992265e789e0d2bfdead099aa9338b7e1b7ce0cea7d5c0"
+        },
+        "workspace_full250_A_none/rq2-gsm8k-A-none-s0_limit250.raw.jsonl": {
+          "bytes": 450024,
+          "sha256": "e3dc146d7c497399c1e53821cbcae519a11a757b2710a13c5ea0fe4f9273a6f9"
+        },
+        "workspace_full250_A_none/run.log": {
+          "bytes": 22815,
+          "sha256": "5978ee3ada6d8151f46b4a7e5e53bed07ef309ccb02530d74020f5d15f87799c"
+        }
+      },
+      "validation": "passed",
+      "metrics": {
+        "n": 250,
+        "accuracy_flexible": 78.8,
+        "accuracy_flexible_ci95": [
+          73.3,
+          83.4
+        ],
+        "accuracy_strict": 43.2,
+        "accuracy_strict_ci95": [
+          37.2,
+          49.4
+        ],
+        "invalid_rate": 0.0,
+        "repair_rate": 0.0,
+        "total_nfe_gen": 19235,
+        "mean_nfe_gen": 76.94,
+        "total_nfe_cached": 0,
+        "mean_nfe_cached": 0.0,
+        "total_nfe_baseline": 0,
+        "mean_nfe_baseline": 0.0,
+        "total_nfe_audit_calls": 0,
+        "mean_nfe_audit_calls": 0.0,
+        "total_nfe_repair": 0,
+        "mean_nfe_repair": 0.0,
+        "total_nfe_total": 19235,
+        "mean_nfe_total": 76.94,
+        "total_wall_ms": 7199364.4,
+        "mean_wall_ms": 28797.46,
+        "total_n_masks_left": 0,
+        "tokens_per_second": 8.05,
+        "wall_seconds_this_invocation": 7201.1
+      },
+      "n_tokens": 57957,
+      "settings": {
+        "gen_length": 256,
+        "block_length": 32,
+        "temperature": 0.0,
+        "mode": "threshold",
+        "threshold": 0.9,
+        "cache": null,
+        "defense": false
+      },
+      "environment": {
+        "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+        "fast_dllm_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+        "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+        "gpu_name": "NVIDIA GeForce RTX 3090",
+        "torch_version": "2.3.1+cu121",
+        "transformers_version": "4.46.2",
+        "model_dtype": "torch.bfloat16",
+        "attention_backend": "torch_sdpa",
+        "team_repo_commit": "unknown",
+        "team_repo_dirty": null,
+        "started_utc": "2026-11-16T07:03:25.435592+00:00",
+        "finished_utc": "2026-11-16T09:03:26.498611+00:00",
+        "output_json": "/root/DLM_safety_code/RQ2/outputs/workspace_full250_A_none/rq2-gsm8k-A-none-s0_limit250.json",
+        "raw_jsonl": "/root/DLM_safety_code/RQ2/outputs/workspace_full250_A_none/rq2-gsm8k-A-none-s0_limit250.raw.jsonl"
+      },
+      "log_progress": {
+        "workspace_full250_A_none/run.log": {
+          "count": 250,
+          "first": 1,
+          "last": 250
+        }
+      },
+      "raw_wall_rounding_difference_ms": 3.400000000372529
+    },
+    "B": {
+      "archive": "RQ2/outputs/backups/withoutB_full250/rq2-withoutB-full250-results.tar.gz",
+      "archive_bytes": 182321,
+      "archive_sha256": "5a9150b96a2fe176d0bf985b6790ca825341de82fc73ccf3923cdef482488581",
+      "files": {
+        "workspace_full250_B_none/rq2-gsm8k-B-none-s0_limit250.json": {
+          "bytes": 294428,
+          "sha256": "33ce0a4d6f3d8d594eefa5642f65002493f8322817c08fec44feb7a5d1a956e0"
+        },
+        "workspace_full250_B_none/rq2-gsm8k-B-none-s0_limit250.meta.json": {
+          "bytes": 163796,
+          "sha256": "1a38c04cc439366b7c6e8eb07e9db9570e47369a7db4d788bef28ec3508e9005"
+        },
+        "workspace_full250_B_none/rq2-gsm8k-B-none-s0_limit250.raw.jsonl": {
+          "bytes": 450157,
+          "sha256": "5f090bca2c72e697d5d346f0fbf43b6b80a92a9d809cd993940252909ea4bc24"
+        },
+        "workspace_full250_B_none/run.log": {
+          "bytes": 22782,
+          "sha256": "8c11ecd17bdc302261b8b4c2ecbbea7b72bd963ff2e2e7013e014b450785a87d"
+        }
+      },
+      "validation": "passed",
+      "metrics": {
+        "n": 250,
+        "accuracy_flexible": 76.0,
+        "accuracy_flexible_ci95": [
+          70.3,
+          80.9
+        ],
+        "accuracy_strict": 39.6,
+        "accuracy_strict_ci95": [
+          33.7,
+          45.8
+        ],
+        "invalid_rate": 0.0,
+        "repair_rate": 0.0,
+        "total_nfe_gen": 12019,
+        "mean_nfe_gen": 48.08,
+        "total_nfe_cached": 0,
+        "mean_nfe_cached": 0.0,
+        "total_nfe_baseline": 0,
+        "mean_nfe_baseline": 0.0,
+        "total_nfe_audit_calls": 0,
+        "mean_nfe_audit_calls": 0.0,
+        "total_nfe_repair": 0,
+        "mean_nfe_repair": 0.0,
+        "total_nfe_total": 12019,
+        "mean_nfe_total": 48.08,
+        "total_wall_ms": 4499856.9,
+        "mean_wall_ms": 17999.43,
+        "total_n_masks_left": 0,
+        "tokens_per_second": 12.908,
+        "wall_seconds_this_invocation": 4501.5
+      },
+      "n_tokens": 58083,
+      "settings": {
+        "gen_length": 256,
+        "block_length": 32,
+        "temperature": 0.0,
+        "mode": "threshold",
+        "threshold": 0.7,
+        "cache": null,
+        "defense": false
+      },
+      "environment": {
+        "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+        "fast_dllm_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+        "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+        "gpu_name": "NVIDIA GeForce RTX 3090",
+        "torch_version": "2.3.1+cu121",
+        "transformers_version": "4.46.2",
+        "model_dtype": "torch.bfloat16",
+        "attention_backend": "torch_sdpa",
+        "team_repo_commit": "unknown",
+        "team_repo_dirty": null,
+        "started_utc": "2026-11-16T09:53:12.764894+00:00",
+        "finished_utc": "2026-11-16T11:08:14.235516+00:00",
+        "output_json": "/root/DLM_safety_code/RQ2/outputs/workspace_full250_B_none/rq2-gsm8k-B-none-s0_limit250.json",
+        "raw_jsonl": "/root/DLM_safety_code/RQ2/outputs/workspace_full250_B_none/rq2-gsm8k-B-none-s0_limit250.raw.jsonl"
+      },
+      "log_progress": {
+        "workspace_full250_B_none/run.log": {
+          "count": 250,
+          "first": 1,
+          "last": 250
+        }
+      },
+      "raw_wall_rounding_difference_ms": 0.900000000372529
+    },
+    "C": {
+      "archive": "RQ2/outputs/backups/withoutC_full250/rq2-withoutC-full250-results.tar.gz",
+      "archive_bytes": 183793,
+      "archive_sha256": "60316863344a579498dd2524ecd5bacef85e259f26d0c42180ef036cf255cbb7",
+      "files": {
+        "rq2_C_recovery/rq2-gsm8k-C-none-s0_limit250.json": {
+          "bytes": 289425,
+          "sha256": "6ebee70df10deb6d76c1dcd8f28211d2d5d657e42000db24718ce222c4a0b66d"
+        },
+        "rq2_C_recovery/rq2-gsm8k-C-none-s0_limit250.meta.json": {
+          "bytes": 163657,
+          "sha256": "5cbb2009a0fc1ee1834d4f7583724f68040da7122b8f59789efcff549042d181"
+        },
+        "rq2_C_recovery/rq2-gsm8k-C-none-s0_limit250.raw.jsonl": {
+          "bytes": 445084,
+          "sha256": "d1baa476bf236ae0c71624e4d36ab123b3108b1529fa27b5da0661acdf3d06a5"
+        },
+        "rq2_C_recovery/run.resume.log": {
+          "bytes": 19348,
+          "sha256": "d7dc588420b2ac92c01cb96aaee23c05653ca46a687d5c6e223e8a4c3aeab376"
+        },
+        "workspace_full250_C_none/run.log": {
+          "bytes": 7581,
+          "sha256": "6e910ce872b5711c02b25c129ac485b3b35b36099433a82497c534cc644088f3"
+        }
+      },
+      "validation": "passed",
+      "metrics": {
+        "n": 250,
+        "accuracy_flexible": 64.4,
+        "accuracy_flexible_ci95": [
+          58.3,
+          70.1
+        ],
+        "accuracy_strict": 31.6,
+        "accuracy_strict_ci95": [
+          26.2,
+          37.6
+        ],
+        "invalid_rate": 0.0,
+        "repair_rate": 0.0,
+        "total_nfe_gen": 8557,
+        "mean_nfe_gen": 34.23,
+        "total_nfe_cached": 0,
+        "mean_nfe_cached": 0.0,
+        "total_nfe_baseline": 0,
+        "mean_nfe_baseline": 0.0,
+        "total_nfe_audit_calls": 0,
+        "mean_nfe_audit_calls": 0.0,
+        "total_nfe_repair": 0,
+        "mean_nfe_repair": 0.0,
+        "total_nfe_total": 8557,
+        "mean_nfe_total": 34.23,
+        "total_wall_ms": 3210588.5,
+        "mean_wall_ms": 12842.35,
+        "total_n_masks_left": 0,
+        "tokens_per_second": 17.77,
+        "wall_seconds_this_invocation": 2634.8
+      },
+      "n_tokens": 57053,
+      "settings": {
+        "gen_length": 256,
+        "block_length": 32,
+        "temperature": 0.0,
+        "mode": "threshold",
+        "threshold": 0.5,
+        "cache": null,
+        "defense": false
+      },
+      "environment": {
+        "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+        "fast_dllm_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+        "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+        "gpu_name": "NVIDIA GeForce RTX 3090",
+        "torch_version": "2.3.1+cu121",
+        "transformers_version": "4.46.2",
+        "model_dtype": "torch.bfloat16",
+        "attention_backend": "torch_sdpa",
+        "team_repo_commit": "unknown",
+        "team_repo_dirty": null,
+        "started_utc": "2026-11-16T12:18:24.759813+00:00",
+        "finished_utc": "2026-11-16T13:02:19.569847+00:00",
+        "output_json": "/tmp/rq2_C_recovery/rq2-gsm8k-C-none-s0_limit250.json",
+        "raw_jsonl": "/tmp/rq2_C_recovery/rq2-gsm8k-C-none-s0_limit250.raw.jsonl"
+      },
+      "log_progress": {
+        "rq2_C_recovery/run.resume.log": {
+          "count": 204,
+          "first": 47,
+          "last": 250
+        },
+        "workspace_full250_C_none/run.log": {
+          "count": 46,
+          "first": 1,
+          "last": 46
+        }
+      },
+      "raw_wall_rounding_difference_ms": -0.5
+    },
+    "D": {
+      "archive": "RQ2/outputs/backups/withoutD_full250/rq2-withoutD-full250-results.tar.gz",
+      "archive_bytes": 183825,
+      "archive_sha256": "ba836cd50332028e689ea6df0e2a95aa23fc32b8d09c6df07b16db00ebb6bafc",
+      "files": {
+        "rq2_D_none/rq2-gsm8k-D-none-s0_limit250.json": {
+          "bytes": 295918,
+          "sha256": "882f0f63b72f37d162374f18ebe20cfa833a3d056b946477088e97aed36158e7"
+        },
+        "rq2_D_none/rq2-gsm8k-D-none-s0_limit250.meta.json": {
+          "bytes": 163984,
+          "sha256": "b0c7368090f60d51c96bffc95f9aa90b0fd5c6394a0a8a239a4be155293a96ea"
+        },
+        "rq2_D_none/rq2-gsm8k-D-none-s0_limit250.raw.jsonl": {
+          "bytes": 452897,
+          "sha256": "47b4c39067227282dd3ef7018ed82194b66e9ded7cee4a1597ea88347d8d9b95"
+        },
+        "rq2_D_none/run.log": {
+          "bytes": 22631,
+          "sha256": "cddc9e4b6408274dbadca299c23fb308b2c1ba4788278cca27d1dfce2ba65404"
+        }
+      },
+      "validation": "passed",
+      "metrics": {
+        "n": 250,
+        "accuracy_flexible": 78.0,
+        "accuracy_flexible_ci95": [
+          72.5,
+          82.7
+        ],
+        "accuracy_strict": 36.8,
+        "accuracy_strict_ci95": [
+          31.1,
+          42.9
+        ],
+        "invalid_rate": 0.0,
+        "repair_rate": 0.0,
+        "total_nfe_gen": 19953,
+        "mean_nfe_gen": 79.81,
+        "total_nfe_cached": 17953,
+        "mean_nfe_cached": 71.81,
+        "total_nfe_baseline": 0,
+        "mean_nfe_baseline": 0.0,
+        "total_nfe_audit_calls": 0,
+        "mean_nfe_audit_calls": 0.0,
+        "total_nfe_repair": 0,
+        "mean_nfe_repair": 0.0,
+        "total_nfe_total": 19953,
+        "mean_nfe_total": 79.81,
+        "total_wall_ms": 2202969.6,
+        "mean_wall_ms": 8811.88,
+        "total_n_masks_left": 0,
+        "tokens_per_second": 26.493,
+        "wall_seconds_this_invocation": 2204.5
+      },
+      "n_tokens": 58363,
+      "settings": {
+        "gen_length": 256,
+        "block_length": 32,
+        "temperature": 0.0,
+        "mode": "threshold",
+        "threshold": 0.9,
+        "cache": "prefix",
+        "defense": false
+      },
+      "environment": {
+        "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+        "fast_dllm_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+        "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+        "gpu_name": "NVIDIA GeForce RTX 3090",
+        "torch_version": "2.3.1+cu121",
+        "transformers_version": "4.46.2",
+        "model_dtype": "torch.bfloat16",
+        "attention_backend": "torch_sdpa",
+        "team_repo_commit": "unknown",
+        "team_repo_dirty": null,
+        "started_utc": "2026-11-16T13:08:45.532439+00:00",
+        "finished_utc": "2026-11-16T13:45:30.003180+00:00",
+        "output_json": "/tmp/rq2_D_none/rq2-gsm8k-D-none-s0_limit250.json",
+        "raw_jsonl": "/tmp/rq2_D_none/rq2-gsm8k-D-none-s0_limit250.raw.jsonl"
+      },
+      "log_progress": {
+        "rq2_D_none/run.log": {
+          "count": 250,
+          "first": 1,
+          "last": 250
+        }
+      },
+      "raw_wall_rounding_difference_ms": 3.6000000000931323
+    },
+    "E": {
+      "archive": "RQ2/outputs/backups/withoutE_full250/rq2-withoutE-full250-results.tar.gz",
+      "archive_bytes": 183235,
+      "archive_sha256": "ad244c10b0efdbb4d231ab45ba667b1469cdd9adca54ce689dabdc2547da8168",
+      "files": {
+        "rq2_E_none/rq2-gsm8k-E-none-s0_limit250.json": {
+          "bytes": 293237,
+          "sha256": "3c515166d2da79a1497ece26845da09c0ebfe9ac1a57a657525eadefaa23442d"
+        },
+        "rq2_E_none/rq2-gsm8k-E-none-s0_limit250.meta.json": {
+          "bytes": 163924,
+          "sha256": "8cb23cb90f1680ba8349870dd739b7f39d64093ba0f0b27d0a2fa41b2ac8a7ec"
+        },
+        "rq2_E_none/rq2-gsm8k-E-none-s0_limit250.raw.jsonl": {
+          "bytes": 449719,
+          "sha256": "51f713aae8bae1f116a2cb2e5b3ece2ee49945d7d88d8845994101ec9448c300"
+        },
+        "rq2_E_none/run.log": {
+          "bytes": 22602,
+          "sha256": "3f8df3f3953fe01c3f238eb6bd63213ff3a5bfee0e1d944d4852da6e1befe1e8"
+        }
+      },
+      "validation": "passed",
+      "metrics": {
+        "n": 250,
+        "accuracy_flexible": 76.4,
+        "accuracy_flexible_ci95": [
+          70.8,
+          81.2
+        ],
+        "accuracy_strict": 39.2,
+        "accuracy_strict_ci95": [
+          33.4,
+          45.4
+        ],
+        "invalid_rate": 0.0,
+        "repair_rate": 0.0,
+        "total_nfe_gen": 20988,
+        "mean_nfe_gen": 83.95,
+        "total_nfe_cached": 18988,
+        "mean_nfe_cached": 75.95,
+        "total_nfe_baseline": 0,
+        "mean_nfe_baseline": 0.0,
+        "total_nfe_audit_calls": 0,
+        "mean_nfe_audit_calls": 0.0,
+        "total_nfe_repair": 0,
+        "mean_nfe_repair": 0.0,
+        "total_nfe_total": 20988,
+        "mean_nfe_total": 83.95,
+        "total_wall_ms": 1757756.1,
+        "mean_wall_ms": 7031.02,
+        "total_n_masks_left": 0,
+        "tokens_per_second": 32.731,
+        "wall_seconds_this_invocation": 1759.3
+      },
+      "n_tokens": 57533,
+      "settings": {
+        "gen_length": 256,
+        "block_length": 32,
+        "temperature": 0.0,
+        "mode": "threshold",
+        "threshold": 0.9,
+        "cache": "dual",
+        "defense": false
+      },
+      "environment": {
+        "model_revision": "08b83a6feb34df1a6011b80c3c00c7563e963b07",
+        "fast_dllm_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+        "diffuguard_commit": "86aeb75203d07064c1ced650edaee74563647d36",
+        "gpu_name": "NVIDIA GeForce RTX 3090",
+        "torch_version": "2.3.1+cu121",
+        "transformers_version": "4.46.2",
+        "model_dtype": "torch.bfloat16",
+        "attention_backend": "torch_sdpa",
+        "team_repo_commit": "unknown",
+        "team_repo_dirty": null,
+        "started_utc": "2026-11-16T13:45:44.599990+00:00",
+        "finished_utc": "2026-11-16T14:15:03.881028+00:00",
+        "output_json": "/tmp/rq2_E_none/rq2-gsm8k-E-none-s0_limit250.json",
+        "raw_jsonl": "/tmp/rq2_E_none/rq2-gsm8k-E-none-s0_limit250.raw.jsonl"
+      },
+      "log_progress": {
+        "rq2_E_none/run.log": {
+          "count": 250,
+          "first": 1,
+          "last": 250
+        }
+      },
+      "raw_wall_rounding_difference_ms": -6.899999999906868
+    }
+  },
+  "paired": [
+    {
+      "metric": "flexible",
+      "left": "0",
+      "right": "A",
+      "gains": 3,
+      "losses": 0,
+      "delta_pp": 1.2,
+      "exact_mcnemar_p": 0.25,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "0",
+      "right": "B",
+      "gains": 15,
+      "losses": 19,
+      "delta_pp": -1.6,
+      "exact_mcnemar_p": 0.6075913612730801,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "0",
+      "right": "C",
+      "gains": 18,
+      "losses": 51,
+      "delta_pp": -13.2,
+      "exact_mcnemar_p": 8.768662462846019e-05,
+      "holm_p_30": 0.0025429121142253454
+    },
+    {
+      "metric": "flexible",
+      "left": "0",
+      "right": "D",
+      "gains": 17,
+      "losses": 16,
+      "delta_pp": 0.4,
+      "exact_mcnemar_p": 1,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "0",
+      "right": "E",
+      "gains": 17,
+      "losses": 20,
+      "delta_pp": -1.2,
+      "exact_mcnemar_p": 0.7428293587290682,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "A",
+      "right": "B",
+      "gains": 13,
+      "losses": 20,
+      "delta_pp": -2.8,
+      "exact_mcnemar_p": 0.296206368599087,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "A",
+      "right": "C",
+      "gains": 17,
+      "losses": 53,
+      "delta_pp": -14.4,
+      "exact_mcnemar_p": 1.919969240032143e-05,
+      "holm_p_30": 0.0005759907720096428
+    },
+    {
+      "metric": "flexible",
+      "left": "A",
+      "right": "D",
+      "gains": 14,
+      "losses": 16,
+      "delta_pp": -0.8,
+      "exact_mcnemar_p": 0.855535551905632,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "A",
+      "right": "E",
+      "gains": 14,
+      "losses": 20,
+      "delta_pp": -2.4,
+      "exact_mcnemar_p": 0.39152830513194203,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "B",
+      "right": "C",
+      "gains": 26,
+      "losses": 55,
+      "delta_pp": -11.6,
+      "exact_mcnemar_p": 0.001688638072721024,
+      "holm_p_30": 0.04390458989074662
+    },
+    {
+      "metric": "flexible",
+      "left": "B",
+      "right": "D",
+      "gains": 25,
+      "losses": 20,
+      "delta_pp": 2.0,
+      "exact_mcnemar_p": 0.5514843298025198,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "B",
+      "right": "E",
+      "gains": 24,
+      "losses": 23,
+      "delta_pp": 0.4,
+      "exact_mcnemar_p": 1,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "flexible",
+      "left": "C",
+      "right": "D",
+      "gains": 57,
+      "losses": 23,
+      "delta_pp": 13.6,
+      "exact_mcnemar_p": 0.00018311656412975104,
+      "holm_p_30": 0.005127263795633029
+    },
+    {
+      "metric": "flexible",
+      "left": "C",
+      "right": "E",
+      "gains": 53,
+      "losses": 23,
+      "delta_pp": 12.0,
+      "exact_mcnemar_p": 0.0007645817391550472,
+      "holm_p_30": 0.020643706957186276
+    },
+    {
+      "metric": "flexible",
+      "left": "D",
+      "right": "E",
+      "gains": 15,
+      "losses": 19,
+      "delta_pp": -1.6,
+      "exact_mcnemar_p": 0.6075913612730801,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "0",
+      "right": "A",
+      "gains": 12,
+      "losses": 6,
+      "delta_pp": 2.4,
+      "exact_mcnemar_p": 0.237884521484375,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "0",
+      "right": "B",
+      "gains": 32,
+      "losses": 35,
+      "delta_pp": -1.2,
+      "exact_mcnemar_p": 0.807194691367025,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "0",
+      "right": "C",
+      "gains": 32,
+      "losses": 55,
+      "delta_pp": -9.2,
+      "exact_mcnemar_p": 0.017827552929735955,
+      "holm_p_30": 0.42786127031366294
+    },
+    {
+      "metric": "strict",
+      "left": "0",
+      "right": "D",
+      "gains": 33,
+      "losses": 43,
+      "delta_pp": -4.0,
+      "exact_mcnemar_p": 0.3018724904870077,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "0",
+      "right": "E",
+      "gains": 41,
+      "losses": 45,
+      "delta_pp": -1.6,
+      "exact_mcnemar_p": 0.7465343822890573,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "A",
+      "right": "B",
+      "gains": 26,
+      "losses": 35,
+      "delta_pp": -3.6,
+      "exact_mcnemar_p": 0.30567741986311836,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "A",
+      "right": "C",
+      "gains": 31,
+      "losses": 60,
+      "delta_pp": -11.6,
+      "exact_mcnemar_p": 0.0031126898483937607,
+      "holm_p_30": 0.07781724620984402
+    },
+    {
+      "metric": "strict",
+      "left": "A",
+      "right": "D",
+      "gains": 30,
+      "losses": 46,
+      "delta_pp": -6.4,
+      "exact_mcnemar_p": 0.08464609267083592,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "A",
+      "right": "E",
+      "gains": 42,
+      "losses": 52,
+      "delta_pp": -4.0,
+      "exact_mcnemar_p": 0.3533280324715825,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "B",
+      "right": "C",
+      "gains": 36,
+      "losses": 56,
+      "delta_pp": -8.0,
+      "exact_mcnemar_p": 0.047011561644854,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "B",
+      "right": "D",
+      "gains": 40,
+      "losses": 47,
+      "delta_pp": -2.8,
+      "exact_mcnemar_p": 0.5202915935750737,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "B",
+      "right": "E",
+      "gains": 55,
+      "losses": 56,
+      "delta_pp": -0.4,
+      "exact_mcnemar_p": 1,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "C",
+      "right": "D",
+      "gains": 56,
+      "losses": 43,
+      "delta_pp": 5.2,
+      "exact_mcnemar_p": 0.22762615711004705,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "C",
+      "right": "E",
+      "gains": 63,
+      "losses": 44,
+      "delta_pp": 7.6,
+      "exact_mcnemar_p": 0.08135304820596587,
+      "holm_p_30": 1
+    },
+    {
+      "metric": "strict",
+      "left": "D",
+      "right": "E",
+      "gains": 50,
+      "losses": 44,
+      "delta_pp": 2.4,
+      "exact_mcnemar_p": 0.606295937693966,
+      "holm_p_30": 1
+    }
+  ],
+  "methods": {
+    "paired": "Exact two-sided McNemar binomial p=min(1,2*sum(comb(gains+losses,k) for k=0..min(gains,losses))/2**(gains+losses)); p=1 for zero discordance. Holm adjusted across all 30 comparisons.",
+    "intervals": "Existing scorer Wilson 95% per-condition intervals, marginal and unadjusted. No paired effect-size interval.",
+    "nfe_reduction": "100*(1-total_nfe_total/64000), unrounded totals",
+    "tokens_per_second": "sum(per_item.n_tokens)/(sum(per_item.wall_ms)/1000), rounded to 3 decimals"
+  },
+  "documentation_base_commit": "63a6a36ccdc9a6ceded35e9830ff502f3ff50add",
+  "analysis_source_sha256": {
+    "RQ2\\run_rq2_gsm8k.py": "728f54b723f8d95239628a0860245086a0d8137abc8918083b7e8b693110e40a",
+    "DiffuGuard\\run_gsm8k.py": "7360e10440247f1605b4d3d1cb24069a1a0406a63e87e7a9aa5357c551e6ca8f"
+  },
+  "verification_scope": "Local archives and extracted files, rescoring with existing RQ1 functions, RAW/META agreement and logs. Remote A-E object equality and per-run source snapshots not verified."
+}

@@ -177,13 +177,7 @@
     "RQ2/types.py": "870a7df8e2bb1c5c7ac85f04da83bc6e91d0a0ad02f0513912e496d952ddf83f",
     "RQ2/upstream.py": "d95adc656b59c5ee5c86a7478c92b43f6a7d2d8998f0882687ce4cd4ebbfef04"
   },
-  "pending_full250_columns": [
-    "A",
-    "B",
-    "C",
-    "D",
-    "E"
-  ],
+  "pending_full250_columns": [],
   "verification_this_preparation": "Backup/extracted-file hash checks, JSON/JSONL result checks, all six pilot summary rows, three saved GPU-record hashes, tracked-code preservation checks and git diff --check passed. CPU pytest aborted before collection due to the local OpenMP environment.",
   "recorded_workspace_command": {
     "argv": [
@@ -292,5 +286,15 @@
     "recording": "RQ2/run_rq2_gsm8k.py::main records torch_sdpa when first block flash_attn_func is absent.",
     "saved_full250_backend": "torch_sdpa",
     "conclusion": "Loader setting and saved backend are compatible with the pinned fallback code path. Runtime GPU execution was not repeated."
-  }
+  },
+  "completed_full250_columns": [
+    "0",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "full250_validation_manifest": "RQ2/results/role_a_gsm8k.full250.json",
+  "full250_summary_scope": "Historical column 0 summary retained; all six verified summaries are in full250_validation_manifest."
 }

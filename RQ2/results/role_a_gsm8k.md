@@ -2,12 +2,27 @@
 
 ## Experiment status
 
-Without DiffuGuard column 0 completed the 250-question evaluation. Columns A–E completed
-10-question pilots. Their 250-question evaluations remain pending.
+Without DiffuGuard columns 0/A/B/C/D/E have completed the same 250-question evaluation.
+
+### Full evaluations (250 questions per condition)
+
+| Column | Flexible | Strict | Mean total NFE | NFE reduction vs 0 | Tokens/sec | Generation seconds | Wall speedup vs 0 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 77.6% | 40.8% | 256.00 | 0.00% | 2.449 | 23612.7350 | 1.000x |
+| A | 78.8% | 43.2% | 76.94 | 69.95% | 8.050 | 7199.3644 | 3.280x |
+| B | 76.0% | 39.6% | 48.08 | 81.22% | 12.908 | 4499.8569 | 5.247x |
+| C | 64.4% | 31.6% | 34.23 | 86.63% | 17.770 | 3210.5885 | 7.355x |
+| D | 78.0% | 36.8% | 79.81 | 68.82% | 26.493 | 2202.9696 | 10.719x |
+| E | 76.4% | 39.2% | 83.95 | 67.21% | 32.731 | 1757.7561 | 13.433x |
+
+All six conditions have zero remaining masks, invalid rate 0 and repair rate 0.
+All accuracy percentages were recalculated from the saved answers using the existing RQ1
+scoring functions. All 1,500 response hashes and cross-file records passed verification.
+
+### Earlier pilots (10 questions per condition)
 
 | Evaluation | Questions | Flexible accuracy | Strict accuracy | Mean measured NFE | Generation wall time, seconds | Remaining masks |
 |---|---:|---:|---:|---:|---:|---:|
-| 0 full evaluation | 250 | 77.6% (194/250) | 40.8% (102/250) | 256.0 | 23612.735 | 0 |
 | 0 pilot | 10 | 90.0% | 40.0% | 256.0 | 922.5624 | 0 |
 | A pilot | 10 | 90.0% | 40.0% | 80.2 | 292.5177 | 0 |
 | B pilot | 10 | 70.0% | 40.0% | 46.6 | 171.2521 | 0 |
@@ -15,9 +30,8 @@ Without DiffuGuard column 0 completed the 250-question evaluation. Columns A–E
 | D pilot | 10 | 90.0% | 40.0% | 89.5 | 92.9284 | 0 |
 | E pilot | 10 | 80.0% | 40.0% | 91.6 | 73.9228 | 0 |
 
-Times are sums of per-question generation measurements from the saved metadata. The full
-evaluation took about 6 hours 33 minutes 33 seconds of generation time. Its recorded
-invocation time is 23614.5 seconds. These values exclude input preparation and model loading.
+Times sum per-question measurements. The C total includes the original 46 questions and
+the 204 resumed questions; its final invocation timer covers only the resumed execution.
 
 ## Configuration and environment
 
@@ -40,6 +54,85 @@ and a prompt-defense stub is used. This evaluation has defense disabled. A compl
 freeze was not recovered from this backup. The Workspace command was recovered from the
 prior conversation record described below.
 
+## Metric definitions and interpretation
+
+`run_rq2_gsm8k.py::run_items` counts model forwards with a pre-hook and checks agreement
+with generation, baseline, audit and repair accounting. All six full evaluations have
+zero baseline/audit/repair NFE, so total NFE equals generation NFE. Cached NFE is a subset
+of generation NFE. D/E have 17,953/18,988 cached forwards out of 19,953/20,988 total.
+NFE reduction uses unrounded totals, `100 * (1 - total_nfe / 64000)`.
+
+`DiffuGuard/run_gsm8k.py::postprocess` decodes the generated tail, truncates at stop text,
+retokenizes that text and counts token IDs other than EOS 126081. The runner's
+`tokens_per_second` is the sum of these recorded `n_tokens` divided by summed `wall_ms`.
+It is a ratio of totals. It includes prompt computation in generation time while counting
+only postprocessed output tokens. The timer surrounds generation, including baseline
+work when enabled, with CUDA synchronization; tokenization, scoring, model loading and
+storage transfer are outside that timer. Saved counts permit recomputing the ratio;
+raw generated token IDs were not archived, so independent retokenization is unverified.
+
+A/B/C lower the threshold from 0.9 to 0.7 to 0.5, reducing mean NFE from 76.94 to 48.08
+to 34.23 while flexible accuracy changes from 78.8% to 76.0% to 64.4%. A is the highest
+observed flexible and strict accuracy in this sample. These observations do not establish
+an optimum across seeds or datasets.
+
+At threshold 0.9, A/D/E have mean NFE 76.94/79.81/83.95 and tokens/sec 8.050/26.493/32.731.
+E uses more forwards than D while attaining higher throughput and lower summed generation
+time. Cached forwards perform different amounts of work. NFE reduction therefore does not
+imply proportional wall-time reduction. E has 76.4% flexible versus D's 78.0%, and 39.2%
+strict versus D's 36.8%. Wall speedups use summed generation time, including C's retained
+records, and exclude failed attempts, recovery downtime and infrastructure preparation.
+
+## Paired accuracy analysis
+
+Each comparison matches the same ordered 250 doc_ids. Gains count questions correct only
+in the right-hand condition; losses count questions correct only in the left-hand condition.
+Two-sided exact McNemar p-values use the binomial distribution on discordant pairs.
+Holm correction covers all 30 tests (15 condition pairs times flexible/strict). The complete
+aggregate comparisons are in `role_a_gsm8k.full250.json`. The method follows the exact
+binomial formulation in the [statsmodels McNemar documentation](https://www.statsmodels.org/stable/generated/statsmodels.stats.contingency_tables.mcnemar.html).
+
+| Metric | Comparison | Gains | Losses | Difference, pp | Exact p | Holm p (30 tests) |
+|---|---|---:|---:|---:|---:|---:|
+| flexible | 0 to A | 3 | 0 | +1.2 | 0.25 | 1 |
+| flexible | 0 to B | 15 | 19 | -1.6 | 0.607591 | 1 |
+| flexible | 0 to C | 18 | 51 | -13.2 | 8.76866e-05 | 0.00254291 |
+| flexible | 0 to D | 17 | 16 | +0.4 | 1 | 1 |
+| flexible | 0 to E | 17 | 20 | -1.2 | 0.742829 | 1 |
+| flexible | D to E | 15 | 19 | -1.6 | 0.607591 | 1 |
+| strict | 0 to A | 12 | 6 | +2.4 | 0.237885 | 1 |
+| strict | 0 to B | 32 | 35 | -1.2 | 0.807195 | 1 |
+| strict | 0 to C | 32 | 55 | -9.2 | 0.0178276 | 0.427861 |
+| strict | 0 to D | 33 | 43 | -4.0 | 0.301872 | 1 |
+| strict | 0 to E | 41 | 45 | -1.6 | 0.746534 | 1 |
+| strict | D to E | 50 | 44 | +2.4 | 0.606296 | 1 |
+
+Only C's flexible comparisons against the other five conditions remain below 0.05 after
+Holm correction. No strict comparison does. A's flexible increase over 0 is 3 gains and
+0 losses, exact p=0.25. Non-significant differences do not establish equivalence.
+
+Per-condition 95% Wilson intervals are preserved in the aggregate JSON and checked with
+the existing scoring function. They are marginal intervals, without multiplicity correction;
+no paired effect-size confidence intervals are estimated. This is an exploratory analysis
+of one fixed subset and one seed. The tests assume independent question pairs across
+questions and do not account for question selection, correlated problem families, seed
+variation or runtime variation. Single runs on an RTX 3090 do not quantify speed variance.
+
+## C interruption and resume
+
+The first C log has progress 1–46 followed by `OSError: [Errno 28] No space left on device`.
+The recovery log has exactly 204 progress records, 47–250. Final outputs contain 250 unique
+ordered questions and pass the same checks as other columns. The final output path is
+`/tmp/rq2_C_recovery`. The metadata generation sum is 3210.5885 seconds, while
+`wall_seconds_this_invocation` is 2634.8 seconds for the resumed invocation.
+
+The user reports `/root` inode exhaustion and removal of an incomplete final line from a
+recovery copy of the partial JSONL, preserving 46 valid records. The archive contains the
+initial and resume logs but no original partial file or inode counter snapshot, so those
+specific recovery steps are documented as user-reported. C retained those 46 records and
+executed the remaining 204. D/E used `/tmp/rq2_D_none` and `/tmp/rq2_E_none` and their logs
+contain all progress records 1–250 plus final summaries.
+
 ## Existing GPU verification records
 
 `workspace_verify_ADE_limit2/check1-2_fastdllm_limit2.json` records original Fast-dLLM
@@ -53,23 +146,34 @@ File hashes and source locations are recorded in `role_a_gsm8k.provenance.json`.
 
 ## Source and result provenance
 
-The executed metadata reports `team_repo_commit=unknown` and `team_repo_dirty=null`.
-The archived RQ2 tracked files were compared with the local working tree and matched
+All six full-evaluation metadata files report `team_repo_commit=unknown` and `team_repo_dirty=null`.
+The previously archived RQ2 tracked files were compared with the local working tree and matched
 byte-for-byte, including the seven uncommitted runner/test changes. The snapshot archive
 SHA-256 is recorded in the accompanying provenance file. A live Workspace filesystem
 comparison has not been performed.
 
-The full result backup contains the response JSON, raw JSONL, metadata JSON and `run.log`.
-All 250 response hashes, document IDs/order, response agreement between JSON and JSONL,
-accuracy totals, NFE and remaining-mask counts were checked after local backup.
+Each result backup contains response JSON, raw JSONL, metadata JSON and execution logs.
+C includes both initial and resume logs. All 1,500 responses were rescored and checked
+against RAW/META. Gold answers match the pinned prompt file. Per-item NFE, time, masks,
+invalid and repair counts reproduce the metadata aggregates.
 
-The metadata ID-file hash matches LF-normalized content. The archived and local Windows
-ID files have CRLF line endings. Raw JSONL wall times are rounded to integer milliseconds,
-giving a 2 ms difference from the metadata total, which sums higher-precision measurements.
+The prompt-file and ID-file hashes match LF-normalized local content. Windows copies
+have CRLF line endings. RAW JSONL times round each item to integer milliseconds while META
+retains tenths of milliseconds. Each rounded RAW time was checked against META.
 
-The authoritative backup is `volume://vessl-storage/rq2-run-assets/rq2-without0-full250-results.tar.gz`.
-The local copy is under `RQ2/outputs/backups/without0_full250/`. These paths are ignored by
-Git. This results directory contains aggregate metrics, provenance and file hashes.
+Local archives and extracted files are under `RQ2/outputs/backups/without{column}_full250/`.
+The external backup location supplied by the user is `volume://vessl-storage/rq2-run-assets`.
+This verification reads local backups; remote object equality was not rechecked for A–E.
+Archive SHA-256, member hashes, byte sizes, original output paths and full aggregate metrics
+are recorded in `role_a_gsm8k.full250.json`. Archives pass decompression and existing extracted
+files match archive bytes. Missing extracted files were restored without overwriting originals.
+
+The documentation baseline is commit `63a6a36ccdc9a6ceded35e9830ff502f3ff50add` on
+`codex/rq2-role-a-gsm8k-results`. Runtime `team_repo_commit` remains `unknown` in every
+condition; an exact per-run source snapshot for A–E is unverified. The common Fast-dLLM,
+model, DiffuGuard and environment versions agree in all six metadata files. Recorded hashes
+and current analysis-code hashes identify the evidence without inventing runtime Git history.
+Full environment freeze, GPU-driver details and repeat-run timing variability are unavailable.
 
 ## Recorded Workspace command
 
