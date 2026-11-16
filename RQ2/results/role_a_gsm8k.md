@@ -135,6 +135,10 @@ contain all progress records 1–250 plus final summaries.
 
 ## Existing GPU verification records
 
+These records validate `src/combined.py::generate`, as called by
+`scripts/verify_gpu.py::cmd_fastdllm`, not `decoding.py::generate_fast`.
+Do not transfer this evidence between those two implementations.
+
 `workspace_verify_ADE_limit2/check1-2_fastdllm_limit2.json` records original Fast-dLLM
 comparisons for **A, D and E, two questions each** (`doc_id` 0 and 2). All six rows report
 identical token IDs, identical NFE and zero remaining masks on both sides. This record's
@@ -257,3 +261,113 @@ Fast-dLLM speed reproduction already exists in commit `24e2d29`, reachable from 
 script already exists on `rq2-combined-decoder`. Preserve these histories when selecting
 the eventual PR base. Comparing this integration branch against `main` includes earlier
 team integration changes alongside role A's pending changes.
+
+## Role A completion audit
+
+This audit distinguishes implemented code, executed evidence and team decisions. It does
+not authorize another experiment. The inspected branch is
+`codex/rq2-role-a-gsm8k-results`, at documentation baseline
+`45f68f6caf2ea6f80c3b954cd5efcab730155d34`, matching the remote before this update.
+
+### Complete: implementation and saved Without evaluations
+
+- `RQ2/upstream.py::load_upstream` rejects an unpinned or dirty Fast-dLLM checkout.
+  `load_model` checks local HF revision metadata and required shard files, loads upstream
+  `LLaDAModelLM` in BF16/eval mode and the local tokenizer. The GSM8K runner's
+  `load_model` delegates its Fast-dLLM path to this shared loader. All six saved full-run
+  metadata files identify this model class and pinned revisions. Loader implementation
+  and use are confirmed; this does not establish all possible backend equivalences.
+- `RQ2/decoding.py::generate_fast(model, prompt, config, upstream)` exists, dispatching
+  D/E to `prefix.py::generate_prefix` / `dual.py::generate_dual`. It uses upstream
+  selection helpers and returns `types.py::DecodeResult`. This implementation is shared
+  with `run_asr.py`; its defaults are ASR-oriented, not GSM8K defaults.
+- The GSM8K execution path is `run_rq2_gsm8k.py::run_items` ->
+  `src/combined.py::generate` for both defense states. `COLUMNS` / `settings` select
+  fixed 256 for 0, thresholds 0.9/0.7/0.5 for A/B/C and threshold 0.9 with Prefix/Dual
+  for D/E. Threshold mode runs to completion rather than treating steps as measured NFE.
+  Full results, metadata and forward accounting support the six completed evaluations;
+  they do not constitute a direct `generate_fast` execution test.
+- All six local archives and every recorded extracted member were rehashed against
+  `role_a_gsm8k.full250.json`; all matched. META has 250 unique doc_ids per condition,
+  with identical order across conditions. The preceding complete rescore remains valid
+  for these unchanged files. No original responses or archives were modified.
+- Against integration base `5c97fc26`, there is no diff under `RQ1/`, `DiffuGuard/`,
+  `DIJA/`, `third_party/` or `RQ2/src/combined.py`. The available external checkout
+  `RQ2/outputs/vessl_assets/sources/Fast-dLLM` is clean at `a9b81e4c...`.
+  This establishes the inspected local scope, not an audit of every remote runtime copy.
+
+### Verification needed: exact scope of token equivalence
+
+The following tests exist, but existence is not an execution pass. No GPU or PyTorch
+unit tests were rerun in this audit; the Windows OpenMP execution limitation above remains.
+
+| Code / test | Inputs and settings | What it actually compares |
+|---|---|---|
+| `tests/test_without0.py::test_original_tokens_and_nfe_match` | FakeModel; token IDs `[3,5,7,9]`; seed 0; generation/steps 32; block 8 or 32; temperature 0 or 0.5 | `generate_fast` vs unmodified upstream `generate`; full token IDs and NFE=32 |
+| `tests/test_threshold.py::test_threshold_matches_original` | Same fake input/seed; generation/steps 32, block 8; A/B/C; temperature 0 or 0.5 | `generate_fast` vs upstream `generate`; tokens and NFE |
+| `tests/test_prefix.py::test_prefix_matches_staged_original_tokens_nfe_and_actual_calls` | CacheModel; `[3,5,7]`; seed 0; generation/steps 32, block 8; threshold 0.9; temperature 0 or 0.5 | D vs `reference.py::prefix_after_first_reference`; tokens, NFE, actual calls and cache use |
+| `tests/test_dual.py::test_dual_matches_staged_original_and_replaces_only_active_positions` | DualModel; same D settings | E vs `dual_reference.py::dual_after_first_reference`; tokens, NFE and active cache positions |
+| `scripts/verify_gpu.py::cmd_fastdllm` | First selected GSM8K items, five-shot chat input from `setup` / `encode`; reseed `doc_id` on each side (base seed 0); generation 256, block 32, temperature 0, threshold 0.9; upstream steps 256 | `combined.generate(defense=False)` vs upstream A/D/E functions; generated-tail token IDs, NFE and remaining masks |
+
+D/E staged references run an uncached first block and then the upstream cache kernel.
+They temporarily restrict an in-memory AST copy of the upstream first-block loop; they do
+not modify the external source files. These are not comparisons against unmodified
+cache-from-block-zero execution. Additional prompt-mask tests cover the ASR extension.
+
+The previously inspected snapshot record in `role_a_gsm8k.provenance.json` reports
+GSM8K doc_ids 0 and 2 for each A/D/E, six token/NFE matches and zero masks. Its original
+snapshot member was not available among the local files found during this audit, so this
+is retained as prior verified provenance, not a newly re-read raw report.
+
+[Role B's Notion results](https://app.notion.com/p/417e01d5b945805a8cb3e7e08fb9207c)
+report A/D/E token equality 30/30 on ten GSM8K questions each, with Transformers 4.49.0.
+That supports the combined-decoder verification claim, not direct `generate_fast`
+equivalence. The 30-row raw report, exact ten IDs/input hashes and executed source commit
+were not recovered here. `verify_gpu.py` provides the intended path and settings, but
+cannot alone establish that exact historical invocation. Do not conflate this team report
+with the separate six-row record or with a pass for every 0/A/B/C/D/E input.
+
+`RQ2/vessl/execute.py::verify` contains proposed real-model direct and bridge comparisons,
+including `cache_start_block=1` for D/E and a fixed float64 diagnostic. It is an existing
+untracked preparation file; no successful gate output was found. It is not completion evidence.
+
+### Team agreement needed: interface and With ownership
+
+The [Primary RQ2 design, final section](https://app.notion.com/p/415e01d5b94580aa8abbf84593335b80)
+assigns the shared loader / `generate_fast` to A, `generate_guarded` to B, and part of
+With GSM8K to A after the pilot. Current code does not implement the proposed common
+guarded wrapper: no `generate_guarded` definition was found under RQ2. B exposes
+`combined.generate(...) -> (token_ids, DecodeStats)`, whereas `generate_fast` returns
+`DecodeResult`. `DecodeConfig.validate` currently accepts Without only.
+
+Resolve these contracts together, without changing completed runs:
+
+- Whether to retain separate GSM8K/ASR entry points or provide the proposed wrapper,
+  and who owns its implementation and defense-disabled bridge evidence.
+- D/E cache policy: `generate_fast` starts at block 1; GSM8K combined defaults to block 0.
+  Align `cache_start_block=1` only for an explicitly ASR-aligned bridge, not by silently
+  changing the GSM8K experiment. Prompt-mask policy must also match.
+- Fixed-mode precision/RNG: combined defaults to model-dtype confidence and draws R
+  in fixed mode, while Fast uses upstream selection. Threshold confidence is float64.
+  Token equivalence cannot be assumed across these choices, especially at nonzero temperature.
+- Result accounting: agree baseline NFE, cached NFE as a subset, audit/repair NFE,
+  remaining-mask fields and timer boundaries. `DecodeResult` has no separate baseline or
+  cached NFE field. `interfaces.md` retains stale introductory 0/A-only language despite
+  later D/E sections; it was not edited without team agreement.
+
+The [progress table](https://app.notion.com/p/419e01d5b945803dba8ae22746f1fb8f)
+returned by Primary marks With GSM8K 0/A/B/C/D/E complete, with values
+68.4/64.8/70.4/58.8/71.6/69.2%. These are table reports, not rescored With results.
+Its execution-record section has no RQ2 per-condition operator or artifact locations.
+The retrieved page is dated 2026-11-15 and still shows older Without status, unlike the
+user's newer observation; use the verified local Without files rather than that stale status.
+The older B results page still lists With distribution and wrapper work as pending.
+
+No local With full250 metadata was found in the inspected backups. Consequently, neither
+A's assigned With columns nor the actual operators can be established here. Ask the team
+to link the existing With artifacts/run IDs, executing commits and operators and confirm
+whether A's share was reassigned or fulfilled. Do not rerun already completed With cells.
+
+**Completion judgment:** shared implementation and Without 0/A/B/C/D/E delivery are
+complete within the evidence above. Full role-A sign-off still needs direct implementation
+verification evidence and team agreement on the common interface and With task allocation.
