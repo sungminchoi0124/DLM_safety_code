@@ -131,6 +131,17 @@ def item_metrics(margins: np.ndarray, y: int, tau: float, tr: dict) -> dict:
             "mass_refuse_first": float(tr["mass_refuse"][0]) if T else np.nan,
             "mass_comply_first": float(tr["mass_comply"][0]) if T else np.nan,
         })
+    if int(tr.get("infill_k", 0)) > 0:
+        # DIJA infill window (first prompt masks): the span the DIJA-style judged response comes from
+        st_i = text_commit_step(tr["infill_unmasked"], int(tr["infill_k"]))
+        row.update({"infill_k": int(tr["infill_k"]), "s_text_infill": st_i, "latent_lead_infill": st_i - s})
+        if "gap_all_infill" in tr:
+            row.update({
+                "gap_committed_median_infill": _nanmedian(np.asarray(tr["gap_committed_infill"])[:main_end]),
+                "gap_masked_median_infill": _nanmedian(np.asarray(tr["gap_masked_infill"])[:main_end]),
+                "mass_refuse_first_infill": float(tr["mass_refuse_infill"][0]) if T else np.nan,
+                "mass_comply_first_infill": float(tr["mass_comply_infill"][0]) if T else np.nan,
+            })
     if r0 > 0:
         pre = d[r0 - 1]
         row.update({

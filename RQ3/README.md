@@ -61,6 +61,24 @@ python -m pytest -q tests                # CPU, 가짜 LLaDA, 27개
 - 디코딩: 시드 0 + 문항 번호, temperature 0.5, gen = block = 128, cfg 0, fill_all_masks
 - trace는 KV 캐시 없이 돌린다.
 
+### 두 응답 구간: 인필과 assistant 답변 (E0.5 결과로 추가, 2026-11-23)
+DIJA 프롬프트는 사용자 턴 안에 빈칸(마스크)이 있다. 그래서 생성 결과는 두 구간으로 나뉜다.
+
+| 구간 | 무엇인가 | 판정 정의 | E0.5 ASR-e |
+|---|---|---|---:|
+| 인필 (주 분석) | 모델이 사용자 턴의 빈칸을 채운 부분 | DIJA·DiffuGuard·RQ1과 같다. 생성 JSON의 `response` | 84% |
+| assistant 답변 | 프롬프트 뒤에 붙은 128칸 답변 | RAEC와 같다. `<run>.tail.json`의 `response` | 6% |
+
+- **기록:** trace는 두 구간을 모두 기록한다.
+  - 응답 앞 16칸은 기존 그대로다: `lead_unmasked`, `gap_*`, `mass_*`.
+  - 인필 앞 16칸(첫 프롬프트 마스크 16개)은 `infill_unmasked`와 `*_infill`로 기록한다.
+  - metrics에는 `s_text_infill`, `latent_lead_infill`, `*_infill` 열이 추가된다.
+- **라벨:** `run_traces.sh judge <설정>`이 두 구간을 모두 판정한다.
+  - 인필 기준은 `labels.csv`, 답변 기준은 `labels_tail.csv`로 trace 폴더에 저장한다.
+  - 프로브와 s\*의 주 분석은 인필 라벨로 한다. 답변 라벨은 보조로 쓴다(해로운 사례가 적다).
+- **Prophet:** 답 영역은 공식대로 assistant 답변 앞 16칸이다. 인필 쪽 격차는 비교용으로만 기록한다.
+- **은닉 상태:** 추적 위치 전체(인필 + 답변)의 평균이다. 이전과 같다.
+
 ### Prophet 구현 세부 (공식 `generate_earlyexit.py`, commit `460afe4` 기준)
 - **판정 시점:** 매 스텝 forward 직후, 커밋하기 전에 판정한다.
 - **격차:** 노이즈 없는 원래 logit의 top-2 격차를 답 영역 16개 위치에서 평균한다. 이미 커밋된 위치도 포함한다(공식 구현 그대로).
@@ -85,18 +103,17 @@ bash scripts/e0_5.sh gen && bash scripts/e0_5.sh judge && bash scripts/e0_5.sh s
 LIMIT=5 bash scripts/run_traces.sh P
 nohup bash scripts/run_traces.sh R > $RQ3_OUT/logs/R.log 2>&1 &
 
-# 판정 -> 라벨 (텍스트는 복사하지 않음)
-python ../DiffuGuard/eval_asr.py $RQ3_OUT/gen/<생성 파일>.json
-python -m commit_time.analyze labels $RQ3_OUT/gen/eval_<생성 파일>.json --out $RQ3_OUT/labels/R.csv
+# 판정 -> 라벨 (텍스트는 복사하지 않음). 인필 -> trace/R/labels.csv, 답변 -> trace/R/labels_tail.csv
+bash scripts/run_traces.sh judge R
 
 # Prophet 복사 경향 (열린 질문 1): R만 있으면 된다
 python -m commit_time.analyze gaps --run $RQ3_OUT/trace/R --out $RQ3_OUT/metrics/gaps_R.csv
 
 # 프로브 학습 -> 점수 -> 뒤집힘
-python -m commit_time.analyze fit --run $RQ3_OUT/trace/R $RQ3_OUT/labels/R.csv \
-  --run $RQ3_OUT/trace/D $RQ3_OUT/labels/D.csv --out $RQ3_OUT/probe/probe.npz
+python -m commit_time.analyze fit --run $RQ3_OUT/trace/R $RQ3_OUT/trace/R/labels.csv \
+  --run $RQ3_OUT/trace/D $RQ3_OUT/trace/D/labels.csv --out $RQ3_OUT/probe/probe.npz
 python -m commit_time.analyze score --probe $RQ3_OUT/probe/probe.npz \
-  --run $RQ3_OUT/trace/P $RQ3_OUT/labels/P.csv --out $RQ3_OUT/metrics/P.csv
+  --run $RQ3_OUT/trace/P $RQ3_OUT/trace/P/labels.csv --out $RQ3_OUT/metrics/P.csv
 python -m commit_time.analyze flips --ref $RQ3_OUT/metrics/R.csv --acc $RQ3_OUT/metrics/P.csv \
   --out $RQ3_OUT/metrics/flips_P.csv
 ```

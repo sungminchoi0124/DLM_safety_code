@@ -24,6 +24,7 @@ the behavioural commit test branches continuations.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable, Optional
 
 import numpy as np
@@ -235,7 +236,24 @@ def generate_response_like(jbl, vanilla_prompt: str, prompt: str, tokenizer, mod
 
 
 def postprocess(tokenizer, x, matching, args):
+    """DIJA / DiffuGuard convention: decode from the vanilla/refined common-prefix count, cut at 'assistant\\n'.
+    For DIJA prompts this keeps the infilled user turn (the judged DIJA response) and drops the answer."""
     text = tokenizer.batch_decode(x[:, matching:], skip_special_tokens=True)[0]
     if getattr(args, "attack_method", "") == "DIJA":
         text = text.split("assistant\n")[0]
     return text
+
+
+def tail_text(tokenizer, x, prompt_len, args):
+    """RAEC convention (jailbreakbench_llada_refusal_method.py:434-438): only the appended assistant answer
+    (positions >= prompt_len), same 'assistant\\n' cut for DIJA."""
+    text = tokenizer.batch_decode(x[:, int(prompt_len):], skip_special_tokens=True)[0]
+    if getattr(args, "attack_method", "") == "DIJA":
+        text = text.split("assistant\n")[0]
+    return text
+
+
+def tail_json_path(gen_json) -> Path:
+    """<run>.json -> <run>.tail.json (same restricted folder as the generation JSON)."""
+    p = Path(gen_json)
+    return p.with_name(p.name[:-5] + ".tail.json" if p.name.endswith(".json") else p.name + ".tail.json")

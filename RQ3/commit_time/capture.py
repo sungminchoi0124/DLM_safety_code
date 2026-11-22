@@ -23,6 +23,12 @@ Logit statistics (logit_stats=True; from the model output of forward f, row 0, s
   mass_refuse[f]       RAEC-style refusal mass: sum of softmax probability over the refusal token
                        set, averaged over the lead positions still masked in x_f (NaN if none)      [T]
   mass_comply[f]       same for the compliance token set                                            [T]
+
+Infill window (DIJA prompts carry masks inside the user turn; the judged DIJA response is that infill):
+  infill_unmasked[f]   of the first `lead_k` prompt-mask positions (positions < prompt_len), how many are
+                       unmasked in x_f                                                               [T+1]
+  <key>_infill[f]      the five logit statistics above over that infill window (with logit_stats)    [T]
+  For prompts without masks the infill window is empty: counts are 0 and the statistics NaN.
 Only these floats are stored, never token ids or probabilities per token.
 """
 from __future__ import annotations
@@ -37,6 +43,8 @@ import torch
 FINAL = "final"
 DEFAULT_LAYERS = (7, 15, 23, FINAL)
 LOGIT_KEYS = ("gap_all", "gap_committed", "gap_masked", "mass_refuse", "mass_comply")
+INFILL_SUFFIX = "_infill"
+ALL_LOGIT_KEYS = LOGIT_KEYS + tuple(k + INFILL_SUFFIX for k in LOGIT_KEYS)
 
 
 def parse_layers(spec: str | Sequence) -> list:
@@ -104,14 +112,17 @@ class TraceRecorder:
     def reset(self):
         self.tracked = None        # LongTensor of positions
         self.lead_pos = None       # LongTensor of the first lead_k response positions (subset of tracked)
+        self.infill_pos = None     # LongTensor of the first lead_k prompt-mask positions (subset of tracked)
         self.seq_len = None
         self.prev_ids = None
         self.hidden = []           # list of [n_layers, d] float16 arrays
         self._cur = {}
         self.n_masks, self.n_commit, self.n_remask = [], [], []
         self.lead_unmasked, self.cue_accept, self.cue_refuse = [], [], []
-        self.logit = {k: [] for k in LOGIT_KEYS}
+        self.infill_unmasked = []
+        self.logit = {k: [] for k in ALL_LOGIT_KEYS}
         self._lead_masked = None
+        self._infill_masked = None
         self.finished = False
 
     def __enter__(self):
@@ -142,6 +153,7 @@ class TraceRecorder:
             self.tracked = torch.nonzero(ids[0] == self.mask_id, as_tuple=False).squeeze(1).cpu()
             resp = self.tracked[self.tracked >= self.prompt_len]
             self.lead_pos = resp[: self.lead_k]
+            self.infill_pos = self.tracked[self.tracked < self.prompt_len][: self.lead_k]
         elif ids.shape[1] != self.seq_len:
             raise RuntimeError("TraceRecorder: partial-sequence forward (KV cache?) is not supported; "
                                "run the trace with use_cache=False / dual_cache=False")
@@ -151,6 +163,8 @@ class TraceRecorder:
         self.n_masks.append(int((cur[self.tracked] == self.mask_id).sum()))
         self.lead_unmasked.append(int((cur[self.lead_pos] != self.mask_id).sum()))
         self._lead_masked = cur[self.lead_pos] == self.mask_id
+        self.infill_unmasked.append(int((cur[self.infill_pos] != self.mask_id).sum()))
+        self._infill_masked = cur[self.infill_pos] == self.mask_id
         self.prev_ids = cur
         self._cur = {}
 
@@ -160,8 +174,15 @@ class TraceRecorder:
             logits = out[0]
         if logits is None or logits.dim() != 3 or logits.shape[1] != self.seq_len:
             raise RuntimeError("TraceRecorder: logit_stats needs full-sequence logits from the model forward")
-        lg = logits[0, self.lead_pos.to(logits.device)].float()          # [k, V]
-        masked = self._lead_masked.to(logits.device)
+        for pos, masked, suffix in ((self.lead_pos, self._lead_masked, ""),
+                                    (self.infill_pos, self._infill_masked, INFILL_SUFFIX)):
+            vals = self._window_stats(logits, pos, masked)
+            for k in LOGIT_KEYS:
+                self.logit[k + suffix].append(vals[k])
+
+    def _window_stats(self, logits, pos, masked) -> dict:
+        lg = logits[0, pos.to(logits.device)].float()                    # [k, V]
+        masked = masked.to(logits.device)
         nan = float("nan")
         if lg.shape[0] == 0:
             vals = dict.fromkeys(LOGIT_KEYS, nan)
@@ -177,8 +198,7 @@ class TraceRecorder:
                     vals[key] = nan
                 else:
                     vals[key] = float(probs[:, ids.to(probs.device)].sum(dim=-1).mean())
-        for k in LOGIT_KEYS:
-            self.logit[k].append(vals[k])
+        return vals
 
     def _make_layer_hook(self, name):
         def hook(_module, _inputs, out):
@@ -218,6 +238,7 @@ class TraceRecorder:
         self._transition(self.prev_ids, cur)
         self.n_masks.append(int((cur[self.tracked] == self.mask_id).sum()))
         self.lead_unmasked.append(int((cur[self.lead_pos] != self.mask_id).sum()))
+        self.infill_unmasked.append(int((cur[self.infill_pos] != self.mask_id).sum()))
         self.finished = True
         return self
 
@@ -237,11 +258,14 @@ class TraceRecorder:
             "n_commit": np.array(self.n_commit, np.int32),
             "n_remask": np.array(self.n_remask, np.int32),
             "lead_unmasked": np.array(self.lead_unmasked, np.int32),
+            "infill_unmasked": np.array(self.infill_unmasked, np.int32),
             "cue_accept": np.array(self.cue_accept, np.int32),
             "cue_refuse": np.array(self.cue_refuse, np.int32),
             "n_tracked": np.int32(len(self.tracked)),
             "n_response_tracked": np.int32(int((self.tracked >= self.prompt_len).sum())),
             "lead_k": np.int32(len(self.lead_pos)),
+            "infill_k": np.int32(len(self.infill_pos)),
+            "n_infill_tracked": np.int32(int((self.tracked < self.prompt_len).sum())),
             "prompt_len": np.int32(self.prompt_len),
             "seq_len": np.int32(self.seq_len),
         }

@@ -9,6 +9,8 @@ For each item: decode once exactly like the main run (same set_seed(seed + item_
 intermediate state x_s in memory, then for each checkpoint s run --n_seeds continuations from x_s with fresh
 seeds. The output is a run_generate.py-style generation JSON (model text; restricted folder) with extra
 fields item_index / branch_forward / branch_seed, ready for eval_asr.py. Intermediate states are never saved.
+Next to it, <out>.tail.json holds the same records with `response` = the appended assistant answer only
+(RAEC convention), so both label definitions can be judged.
 
 --decoder prophet: the reference decode and every continuation use the Prophet early exit (same thresholds;
 the progress keeps counting from the checkpoint, so a continuation can exit at any later step). Checkpoints
@@ -26,7 +28,7 @@ from pathlib import Path
 import torch
 
 from ._dg import import_runner, sha12, split_argv
-from .decode import decode, generate_response_like, postprocess
+from .decode import decode, generate_response_like, postprocess, tail_json_path, tail_text
 from .run_trace import add_prophet_args, decoder_kwargs
 
 
@@ -83,11 +85,11 @@ def main(argv=None):
 
     out_path = Path(opts.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    records, t_start = [], time.perf_counter()
+    records, tails, t_start = [], [], time.perf_counter()
     for idx in [int(s) for s in opts.items.split(",") if s.strip()]:
         rg.set_seed(cfg["seed"] + idx)
         p = rg.build_prompts(items[idx], tokenizer, jbl, cfg, is_instruct)
-        text0, res, _, matching = generate_response_like(
+        text0, res, prompt_len, matching = generate_response_like(
             jbl, p["vanilla_prompt"], p["prompt"], tokenizer, model, args, rule=opts.decoder,
             threshold=opts.tau, snapshot_at=range(0, 10_000), **dkw)
         T = res.nfe
@@ -101,6 +103,7 @@ def main(argv=None):
                 "item_index": idx, "ref_forwards": T, "decoder": opts.decoder, "tau": opts.tau}
         records.append({**base, "response": text0, "branch_forward": -1, "branch_seed": None,
                         "is_reference": True, "reproduced_main_run": reproduced, **_exit_fields(res)})
+        tails.append(tail_text(tokenizer, res.x, prompt_len, args))
         for s in checkpoints_for(T, fracs):
             for k in range(opts.n_seeds):
                 seed = opts.seed_base + idx * 100_000 + s * 100 + k
@@ -110,7 +113,11 @@ def main(argv=None):
                 records.append({**base, "response": postprocess(tokenizer, r.x, matching, args),
                                 "branch_forward": s, "branch_frac": s / T, "branch_seed": seed,
                                 "is_reference": False, **_exit_fields(r)})
+                tails.append(tail_text(tokenizer, r.x, prompt_len, args))
         out_path.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+        tail_json_path(out_path).write_text(json.dumps(
+            [{**rec, "response": t, "response_span": "assistant_tail"} for rec, t in zip(records, tails)],
+            indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"item {idx}: T={T} checkpoints={checkpoints_for(T, fracs)} "
               f"total records={len(records)} elapsed={time.perf_counter() - t_start:.0f}s", flush=True)
     print(f"saved -> {out_path}  (judge it with DiffuGuard/eval_asr.py)")

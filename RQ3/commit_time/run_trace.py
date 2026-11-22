@@ -23,8 +23,13 @@ gap: all / committed / masked; RAEC refusal / compliance mass); --no_logit_stats
 reproduces original on the vanilla preset, so the first forward where gap_all >= threshold in an R trace is
 the exit step a Prophet run with the same seed takes.
 
+The same statistics are also recorded over the DIJA infill window (first --lead_k prompt-mask positions, keys
+with suffix _infill), because the judged DIJA response is the infilled user turn, not the appended answer.
+
 Writes trace_dir/hidden/itemNNN.npz (hidden states, counts, logit statistics, prophet_* arrays; no text),
-trace_dir/trace_meta.jsonl and trace_dir/trace_run.json. Model text stays in run_generate.py's generation JSON only.
+trace_dir/trace_meta.jsonl and trace_dir/trace_run.json. Model text stays in the restricted generation folder:
+run_generate.py's JSON (DIJA convention: infilled user turn) and, next to it, <run>.tail.json with the same
+records but `response` = the appended assistant answer only (RAEC convention), for a second eval_asr.py pass.
 """
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ import numpy as np
 
 from ._dg import import_runner, sha12, split_argv
 from .capture import DEFAULT_LAYERS, TraceRecorder, parse_layers, write_meta_line
-from .decode import PROPHET_PHASES, PROPHET_THRESHOLDS, generate_response_like
+from .decode import PROPHET_PHASES, PROPHET_THRESHOLDS, generate_response_like, tail_json_path, tail_text
 from .token_sets import raec_token_sets
 
 
@@ -103,7 +108,7 @@ def build_parser():
 
 def install(jbl, opts, trace_dir: Path):
     gfl = sys.modules["utility.generate_function_llada"]
-    state = {"idx": 0, "cues": None, "masses": None}
+    state = {"idx": 0, "cues": None, "masses": None, "tails": {}}
     dkw = decoder_kwargs(opts) if hasattr(opts, "prophet_thresholds") else {}
     orig_generate_response = jbl.generate_response
     orig_generate_llada = jbl.generate_llada
@@ -147,15 +152,30 @@ def install(jbl, opts, trace_dir: Path):
                 final = res.x
                 info = res.info
             rec.finish(final)
+        tail = tail_text(tokenizer, final, ids.shape[1], args)
+        state["tails"][idx] = tail                       # memory only; written next to the generation JSON
         saved = rec.save(trace_dir / "hidden" / f"item{idx:03d}.npz", extra=prophet_extra(info))
         write_meta_line(trace_dir / "trace_meta.jsonl", {
             "item_index": idx, "decoder": opts.decoder, "tau": opts.tau, **saved,
             **({"prophet": prophet_meta(info)} if info else {}),
-            "seconds": round(time.perf_counter() - t0, 3), "response_sha256_12": sha12(text)})
+            "seconds": round(time.perf_counter() - t0, 3), "response_sha256_12": sha12(text),
+            "tail_sha256_12": sha12(tail)})
         return text
 
     jbl.generate_response = traced
+    jbl._rq3_trace_state = state
     return jbl
+
+
+def write_tail_json(gen_json, tails: dict) -> Path:
+    """Copy of the generation JSON with `response` replaced by the assistant tail (RAEC convention)."""
+    recs = json.loads(Path(gen_json).read_text(encoding="utf-8"))
+    if len(recs) != len(tails):
+        raise SystemExit(f"tail json: {len(recs)} generation records vs {len(tails)} traced items")
+    out = [{**r, "response": tails[i], "response_span": "assistant_tail"} for i, r in enumerate(recs)]
+    path = tail_json_path(gen_json)
+    path.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
 
 
 def main(argv=None):
@@ -176,16 +196,23 @@ def main(argv=None):
     rg = import_runner()
     orig_import = rg.import_original
 
+    holder = {}
+
     def patched_import(root):
-        return install(orig_import(root), opts, trace_dir)
+        holder["jbl"] = install(orig_import(root), opts, trace_dir)
+        return holder["jbl"]
 
     rg.import_original = patched_import
     meta = rg.main(rest)
+    tail_path = None
+    if meta.get("output_json") and "jbl" in holder:
+        tail_path = write_tail_json(meta["output_json"], holder["jbl"]._rq3_trace_state["tails"])
     (trace_dir / "trace_run.json").write_text(json.dumps({
         "trace_opts": vars(opts), "run_generate_argv": rest,
         "run_name": meta.get("run_name"), "output_json": meta.get("output_json"), "gen": meta.get("gen"),
         "seed": meta.get("seed"), "model_revision": meta.get("model_revision"),
         "prompt_file_sha256": meta.get("prompt_file_sha256"), "team_repo_commit": meta.get("team_repo_commit"),
+        "tail_json": str(tail_path) if tail_path else None,
     }, indent=2), encoding="utf-8")
     print(f"trace -> {trace_dir}")
     return meta
