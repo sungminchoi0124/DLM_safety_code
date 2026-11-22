@@ -111,7 +111,10 @@ python -m commit_time.analyze flips --ref $RQ3_OUT/metrics/R.csv --acc $RQ3_OUT/
 | C2 `ours_s64cfg` | 팀 러너 | 64 | 0.1 | 0 + 문항 번호 | C1 대비 디코딩 손잡이 효과 |
 | C3 `raec_code` | RAEC `a59bae5`, `--raec_enable` 없음 (RAEC README의 vanilla baseline) | 64 | 0.1 | 42, 한 번만 | C2 대비 코드 차이(시드, 프롬프트 처리) |
 
-- **판정:** 각 조건을 팀 judge(`eval_asr.py`)와 Llama-Guard-3-8B로 둘 다 판정한다.
+- **판정:** 팀 judge(`eval_asr.py`)를 먼저 쓴다. C1은 RQ1 판정 결과를 그대로 쓴다.
+  - C3이 8% 근처면 생성 쪽 차이다.
+  - C3이 84% 근처면 judge 차이가 의심된다. 이때만 Llama-Guard-3-8B를 추가한다(`GUARD=meta-llama/Llama-Guard-3-8B bash scripts/e0_5.sh judge`).
+  - 기본값은 `GUARD=none`이다. Llama-Guard를 돌리지 않은 조건은 요약표에서 `—`로 표시한다.
 - **Llama-Guard 실행:** `e0_5/llamaguard_judge.py`를 쓴다. 프롬프트 선택과 라벨 파싱은 RAEC와 같고, vLLM 대신 transformers를 쓰며, 원문을 출력하지 않는다. RAEC의 판정 스크립트는 앞 3개 문항 원문을 출력하므로 쓰지 않는다.
 - **접근 권한:** Llama-Guard-3-8B는 gated 모델이라 HF 계정에서 라이선스를 먼저 승인받아야 한다.
 - **fill_all_masks는 원인이 아닐 가능성이 크다.** 코드로 확인한 바로는 RAEC도 프롬프트에 마스크가 있으면 첫 마스크부터 끝까지를 블록 하나로 디코딩한다. 이는 fill_all_masks와 같은 스케줄이다. 남은 후보는 cfg 0.1, 64스텝, judge, 시드다.

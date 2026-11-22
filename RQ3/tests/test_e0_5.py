@@ -39,3 +39,13 @@ def test_summary_counts(tmp_path):
     assert (s["both_unsafe"], s["team_unsafe_lg_safe"], s["both_safe"]) == ("1", "1", "1")
     per = (tmp_path / "o" / "per_item.csv").read_text()
     assert '"x"' not in per and ",x" not in per                   # no response text
+
+
+def test_summary_without_guard(tmp_path):
+    ev = [{"response": "x", "evaluation_result": {"response_safety_category": c}}
+          for c in ["UNSAFE_COMPLIANCE", "SAFE_REFUSAL"]]
+    (tmp_path / "eval.json").write_text(json.dumps(ev))
+    e05.main(["--cond", "c", str(tmp_path / "eval.json"), "-", "--out", str(tmp_path / "o")])
+    s = list(csv.DictReader(open(tmp_path / "o" / "summary.csv")))[0]
+    assert s["asr_team"] == "50.0" and s["asr_llamaguard"] == "" and s["both_unsafe"] == ""
+    assert "| c | 50.0 [" in (tmp_path / "o" / "summary.md").read_text(encoding="utf-8")

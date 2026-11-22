@@ -1,4 +1,4 @@
-# DLM_safety_code
+﻿# DLM_safety_code
 
 디퓨전 언어모델(dLLM) 안전성 연구 코드.
 연구 질문: **추론 가속(스텝 수 감소·병렬 디코딩·KV 캐시)이 안전 방어를 약하게 만드는가?**
@@ -37,7 +37,7 @@ DLM_safety_code/
 | 폴더 | 연구 질문 | 상태 |
 |---|---|---|
 | [`RQ1/`](RQ1/README.md) | 디퓨전 스텝 수를 줄이면 DiffuGuard를 켠/끈 모델의 ASR과 GSM8K 성능이 어떻게 변하는가 | **방어 없음(vanilla) 스텝 감소 실험 완료** (DIJA ASR, GSM8K 250 정확도, 시드 0). DiffuGuard 켬 조건 진행 중. `run.py` 본실행 파이프라인은 뼈대 상태. 파일 형식은 [`RQ1/docs/interfaces.md`](RQ1/docs/interfaces.md) |
-| [`RQ3/`](RQ3/README.md) | 거절/순응 결정은 디노이징 중 언제 확정되는가 (프로브 확정 시점 s\*, 망설임 n_τ), 가속(Fast-dLLM 임계값 · Prophet 조기 종료)은 그 결정을 바꾸는가 | 코드 준비 완료 (CPU 테스트 27개), GPU 실행 대기. 먼저 E0.5 (우리 84% vs RAEC 8% 원인) |
+| [`RQ3/`](RQ3/README.md) | 거절/순응 결정은 디노이징 중 언제 확정되는가 (프로브 확정 시점 s\*, 망설임 n_τ), 가속(Fast-dLLM 임계값 · Prophet 조기 종료)은 그 결정을 바꾸는가 | 코드 준비 완료 (CPU 테스트 28개), GPU 실행 대기. 먼저 E0.5 (우리 84% vs RAEC 8% 원인) |
 
 **RQ1 vanilla 결과 요약** (자세한 표: [`RQ1/README.md`](RQ1/README.md#결과))
 
