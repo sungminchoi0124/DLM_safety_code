@@ -1,0 +1,5 @@
+# on top of the DiffuGuard environment (torch, transformers)
+numpy
+scikit-learn>=1.3
+scipy
+pytest
