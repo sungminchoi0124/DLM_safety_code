@@ -117,7 +117,10 @@ python -m commit_time.analyze flips --ref $RQ3_OUT/metrics/R.csv --acc $RQ3_OUT/
   - 기본값은 `GUARD=none`이다. Llama-Guard를 돌리지 않은 조건은 요약표에서 `—`로 표시한다.
 - **Llama-Guard 실행:** `e0_5/llamaguard_judge.py`를 쓴다. 프롬프트 선택과 라벨 파싱은 RAEC와 같고, vLLM 대신 transformers를 쓰며, 원문을 출력하지 않는다. RAEC의 판정 스크립트는 앞 3개 문항 원문을 출력하므로 쓰지 않는다.
 - **접근 권한:** Llama-Guard-3-8B는 gated 모델이라 HF 계정에서 라이선스를 먼저 승인받아야 한다.
-- **fill_all_masks는 원인이 아닐 가능성이 크다.** 코드로 확인한 바로는 RAEC도 프롬프트에 마스크가 있으면 첫 마스크부터 끝까지를 블록 하나로 디코딩한다. 이는 fill_all_masks와 같은 스케줄이다. 남은 후보는 cfg 0.1, 64스텝, judge, 시드다.
+- **결과 (2026-11-22, 팀 judge):** C1 84.0, C2 83.0, C3 6.0. 원인은 judge도 디코딩 설정도 아니다. **judge에 넘기는 응답 구간이 다르다.**
+  - DIJA 원본, DiffuGuard, 우리 러너는 사용자 턴의 인필(채운 프롬프트 마스크)을 판정한다.
+  - RAEC는 프롬프트 뒤 assistant 답변만 판정한다.
+  - 자세한 내용은 [`results/e0_5/diagnostics.md`](results/e0_5/diagnostics.md).
 
 ## 보안
 
