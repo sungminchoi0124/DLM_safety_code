@@ -15,6 +15,15 @@ Index convention
   lead_unmasked[f]     of the first `lead_k` response positions, how many are unmasked in x_f   [T+1]
   cue_accept/refuse[f] committed tokens at step f inside the lead window that belong to the DiffuGuard
                        accept / refuse cue sets (counts only; no token ids are stored)              [T]
+
+Logit statistics (logit_stats=True; from the model output of forward f, row 0, so before any cfg mixing):
+  gap_all[f]           mean top-2 logit gap over the lead window (= Prophet answer region)          [T]
+  gap_committed[f]     same, lead positions already unmasked in x_f (NaN if none)                   [T]
+  gap_masked[f]        same, lead positions still masked in x_f (NaN if none)                       [T]
+  mass_refuse[f]       RAEC-style refusal mass: sum of softmax probability over the refusal token
+                       set, averaged over the lead positions still masked in x_f (NaN if none)      [T]
+  mass_comply[f]       same for the compliance token set                                            [T]
+Only these floats are stored, never token ids or probabilities per token.
 """
 from __future__ import annotations
 
@@ -27,6 +36,7 @@ import torch
 
 FINAL = "final"
 DEFAULT_LAYERS = (7, 15, 23, FINAL)
+LOGIT_KEYS = ("gap_all", "gap_committed", "gap_masked", "mass_refuse", "mass_comply")
 
 
 def parse_layers(spec: str | Sequence) -> list:
@@ -73,7 +83,9 @@ class TraceRecorder:
     """Context manager. `prompt_len` = length of the tokenized prompt (start of the response tail)."""
 
     def __init__(self, model, *, mask_id: int, prompt_len: int, layers=DEFAULT_LAYERS, lead_k: int = 16,
-                 accept_ids: Optional[set] = None, refuse_ids: Optional[set] = None):
+                 accept_ids: Optional[set] = None, refuse_ids: Optional[set] = None,
+                 logit_stats: bool = False, mass_refuse_ids: Optional[set] = None,
+                 mass_comply_ids: Optional[set] = None):
         self.model = model
         self.mask_id = int(mask_id)
         self.prompt_len = int(prompt_len)
@@ -82,6 +94,9 @@ class TraceRecorder:
         self.lead_k = int(lead_k)
         self.accept = torch.tensor(sorted(accept_ids or []), dtype=torch.long)
         self.refuse = torch.tensor(sorted(refuse_ids or []), dtype=torch.long)
+        self.logit_stats = bool(logit_stats)
+        self.mass_ref = torch.tensor(sorted(mass_refuse_ids or []), dtype=torch.long)
+        self.mass_cmp = torch.tensor(sorted(mass_comply_ids or []), dtype=torch.long)
         self._handles = []
         self.reset()
 
@@ -95,11 +110,15 @@ class TraceRecorder:
         self._cur = {}
         self.n_masks, self.n_commit, self.n_remask = [], [], []
         self.lead_unmasked, self.cue_accept, self.cue_refuse = [], [], []
+        self.logit = {k: [] for k in LOGIT_KEYS}
+        self._lead_masked = None
         self.finished = False
 
     def __enter__(self):
         self.reset()
         self._handles.append(self.model.register_forward_pre_hook(self._pre, with_kwargs=True))
+        if self.logit_stats:
+            self._handles.append(self.model.register_forward_hook(self._post))
         for name, mod in self.layer_mods.items():
             self._handles.append(mod.register_forward_hook(self._make_layer_hook(name)))
         return self
@@ -131,8 +150,35 @@ class TraceRecorder:
             self._transition(self.prev_ids, cur)
         self.n_masks.append(int((cur[self.tracked] == self.mask_id).sum()))
         self.lead_unmasked.append(int((cur[self.lead_pos] != self.mask_id).sum()))
+        self._lead_masked = cur[self.lead_pos] == self.mask_id
         self.prev_ids = cur
         self._cur = {}
+
+    def _post(self, _module, _args, out):
+        logits = getattr(out, "logits", None)
+        if logits is None and isinstance(out, (tuple, list)):
+            logits = out[0]
+        if logits is None or logits.dim() != 3 or logits.shape[1] != self.seq_len:
+            raise RuntimeError("TraceRecorder: logit_stats needs full-sequence logits from the model forward")
+        lg = logits[0, self.lead_pos.to(logits.device)].float()          # [k, V]
+        masked = self._lead_masked.to(logits.device)
+        nan = float("nan")
+        if lg.shape[0] == 0:
+            vals = dict.fromkeys(LOGIT_KEYS, nan)
+        else:
+            top2 = torch.topk(lg, k=2, dim=-1).values
+            gap = top2[:, 0] - top2[:, 1]
+            vals = {"gap_all": float(gap.mean()),
+                    "gap_committed": float(gap[~masked].mean()) if bool((~masked).any()) else nan,
+                    "gap_masked": float(gap[masked].mean()) if bool(masked.any()) else nan}
+            probs = torch.softmax(lg[masked], dim=-1) if bool(masked.any()) else None
+            for key, ids in (("mass_refuse", self.mass_ref), ("mass_comply", self.mass_cmp)):
+                if probs is None or len(ids) == 0:
+                    vals[key] = nan
+                else:
+                    vals[key] = float(probs[:, ids.to(probs.device)].sum(dim=-1).mean())
+        for k in LOGIT_KEYS:
+            self.logit[k].append(vals[k])
 
     def _make_layer_hook(self, name):
         def hook(_module, _inputs, out):
@@ -180,7 +226,11 @@ class TraceRecorder:
             raise RuntimeError("call finish(final_ids) first")
         T = len(self.hidden)
         assert len(self.n_masks) == T + 1 and len(self.n_commit) == T, "trace bookkeeping mismatch"
-        return {
+        extra = {}
+        if self.logit_stats:
+            assert all(len(v) == T for v in self.logit.values()), "logit stats bookkeeping mismatch"
+            extra = {k: np.array(v, np.float32) for k, v in self.logit.items()}
+        return extra | {
             "hidden": np.stack(self.hidden) if T else np.zeros((0, len(self.layer_names), 0), np.float16),
             "layer_names": np.array(self.layer_names),
             "n_masks": np.array(self.n_masks, np.int32),
@@ -196,8 +246,14 @@ class TraceRecorder:
             "seq_len": np.int32(self.seq_len),
         }
 
-    def save(self, path: Path) -> dict:
+    def save(self, path: Path, extra: Optional[dict] = None) -> dict:
+        """`extra`: additional numeric arrays (e.g. prophet_* from decode()); never text or token ids."""
         a = self.arrays()
+        for k, v in (extra or {}).items():
+            arr = np.asarray(v)
+            if arr.dtype.kind not in "biuf":
+                raise TypeError(f"extra array {k} must be numeric")
+            a[k] = arr
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(path, **a)

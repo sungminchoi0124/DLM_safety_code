@@ -4,3 +4,6 @@
 [submodule "DiffuGuard/third_party/DiffuGuard"]
 	path = DiffuGuard/third_party/DiffuGuard
 	url = https://github.com/niez233/DiffuGuard
+[submodule "RQ3/third_party/RAEC"]
+	path = RQ3/third_party/RAEC
+	url = https://github.com/Glresearch1/RAEC

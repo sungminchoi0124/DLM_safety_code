@@ -9,6 +9,11 @@ For each item: decode once exactly like the main run (same set_seed(seed + item_
 intermediate state x_s in memory, then for each checkpoint s run --n_seeds continuations from x_s with fresh
 seeds. The output is a run_generate.py-style generation JSON (model text; restricted folder) with extra
 fields item_index / branch_forward / branch_seed, ready for eval_asr.py. Intermediate states are never saved.
+
+--decoder prophet: the reference decode and every continuation use the Prophet early exit (same thresholds;
+the progress keeps counting from the checkpoint, so a continuation can exit at any later step). Checkpoints
+are placed on the reference run's own forwards (T = its exit step). Each record gets branch_exit_step /
+branch_exited (numbers only).
 """
 from __future__ import annotations
 
@@ -22,19 +27,27 @@ import torch
 
 from ._dg import import_runner, sha12, split_argv
 from .decode import decode, generate_response_like, postprocess
+from .run_trace import add_prophet_args, decoder_kwargs
 
 
 def build_parser():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", required=True, help="generation JSON for eval_asr.py (restricted folder)")
-    p.add_argument("--decoder", choices=["quota", "threshold"], default="quota")
+    p.add_argument("--decoder", choices=["quota", "threshold", "prophet"], default="quota")
     p.add_argument("--tau", type=float)
+    add_prophet_args(p)
     p.add_argument("--items", required=True, help="comma-separated item indices")
     p.add_argument("--checkpoint_fracs", default="0,0.05,0.1,0.2,0.35,0.5,0.75")
     p.add_argument("--n_seeds", type=int, default=8)
     p.add_argument("--seed_base", type=int, default=7_000_000)
     p.add_argument("--reference_json", help="main-run generation JSON; checks the reference decode reproduces it")
     return p
+
+
+def _exit_fields(res):
+    if not res.info:
+        return {}
+    return {"branch_exit_step": res.info["exit_step"], "branch_exited": bool(res.info["exited"])}
 
 
 def checkpoints_for(T, fracs):
@@ -63,6 +76,7 @@ def main(argv=None):
     args = rg.gen_namespace(cfg)
     is_instruct = rg.is_instruct_path(cfg["model_path"])
     fracs = [float(f) for f in opts.checkpoint_fracs.split(",")]
+    dkw = decoder_kwargs(opts)
     ref = None
     if opts.reference_json:
         ref = json.loads(Path(opts.reference_json).read_text(encoding="utf-8"))
@@ -75,7 +89,7 @@ def main(argv=None):
         p = rg.build_prompts(items[idx], tokenizer, jbl, cfg, is_instruct)
         text0, res, _, matching = generate_response_like(
             jbl, p["vanilla_prompt"], p["prompt"], tokenizer, model, args, rule=opts.decoder,
-            threshold=opts.tau, snapshot_at=range(0, 10_000))
+            threshold=opts.tau, snapshot_at=range(0, 10_000), **dkw)
         T = res.nfe
         reproduced = None
         if ref is not None:
@@ -86,16 +100,16 @@ def main(argv=None):
                 "used_prompt_type": p["used_prompt_type"], "final_prompt": p["prompt"],
                 "item_index": idx, "ref_forwards": T, "decoder": opts.decoder, "tau": opts.tau}
         records.append({**base, "response": text0, "branch_forward": -1, "branch_seed": None,
-                        "is_reference": True, "reproduced_main_run": reproduced})
+                        "is_reference": True, "reproduced_main_run": reproduced, **_exit_fields(res)})
         for s in checkpoints_for(T, fracs):
             for k in range(opts.n_seeds):
                 seed = opts.seed_base + idx * 100_000 + s * 100 + k
                 r = decode(model, None, None, gen_length=args.gen_length, steps=args.steps,
                            temperature=args.temperature, mask_id=args.mask_id, rule=opts.decoder,
-                           threshold=opts.tau, resume=res.snapshots[s], seed=seed)
+                           threshold=opts.tau, resume=res.snapshots[s], seed=seed, **dkw)
                 records.append({**base, "response": postprocess(tokenizer, r.x, matching, args),
                                 "branch_forward": s, "branch_frac": s / T, "branch_seed": seed,
-                                "is_reference": False})
+                                "is_reference": False, **_exit_fields(r)})
         out_path.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"item {idx}: T={T} checkpoints={checkpoints_for(T, fracs)} "
               f"total records={len(records)} elapsed={time.perf_counter() - t_start:.0f}s", flush=True)

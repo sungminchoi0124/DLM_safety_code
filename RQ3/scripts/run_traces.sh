@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# RQ3 trace runs (handoff 6.3). One setting per call so a stopped Workspace loses at most one run.
+#
+#   cd /root/DLM_safety_code/RQ3 && export RQ3_OUT=/root/rq3-outputs
+#   nohup bash scripts/run_traces.sh R > $RQ3_OUT/logs/R.log 2>&1 &
+#
+# setting   defense      decoder                     knob                         role
+#   R       vanilla      original                    128 steps                    reference, probe training
+#   D       diffuguard   original                    128 steps + repair 8         probe training, H3
+#   A0.9    vanilla      threshold (Fast-dLLM)       tau 0.9                      H1/H2, early compression
+#   A0.7    vanilla      threshold                   tau 0.7
+#   A0.5    vanilla      threshold                   tau 0.5
+#   P       vanilla      prophet                     7.5/5.0/2.5, A = first 16    H1 late truncation, H2
+#   P_argmax vanilla     prophet, noise-free fill    same                         sensitivity (open question 4)
+# Common: DiffuGuard/configs/llada_dija.yaml, attack dija_jbb (public 100, sha256 534d0df5...), seed 0 + item
+# index, temperature 0.5, gen_length = block_length = 128, cfg 0, fill_all_masks. No KV cache (traces need the
+# full sequence every forward). Fixed step reduction is not a setting here (dropped).
+set -euo pipefail
+
+RQ3_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$RQ3_DIR/.." && pwd)"
+: "${RQ3_OUT:?export RQ3_OUT=/root/rq3-outputs (outside git)}"
+M="${M:-$REPO/hf_models/LLaDA-8B-Instruct}"
+PY="${PYTHON:-python}"
+LIMIT="${LIMIT:-}"                       # e.g. LIMIT=5 for a smoke run (adds _limit5 to the output name)
+mkdir -p "$RQ3_OUT/logs" "$RQ3_OUT/gen" "$RQ3_OUT/trace"
+
+common=(--model_path "$M" --attack dija_jbb --steps 128 --output_dir "$RQ3_OUT/gen")
+[ -n "$LIMIT" ] && common+=(--limit "$LIMIT")
+
+run() {  # name, own args..., -- , run_generate args...
+  local name=$1; shift
+  local dir="$RQ3_OUT/trace/$name${LIMIT:+_limit$LIMIT}"
+  cd "$RQ3_DIR"
+  "$PY" -m commit_time.run_trace --trace_dir "$dir" "$@" --tag "rq3_$name"
+  echo "trace -> $dir"
+}
+
+case "${1:-}" in
+  R)        run R        --decoder original               -- --defense vanilla    "${common[@]}" ;;
+  D)        run D        --decoder original               -- --defense diffuguard "${common[@]}" ;;
+  A0.9)     run A0.9     --decoder threshold --tau 0.9    -- --defense vanilla    "${common[@]}" ;;
+  A0.7)     run A0.7     --decoder threshold --tau 0.7    -- --defense vanilla    "${common[@]}" ;;
+  A0.5)     run A0.5     --decoder threshold --tau 0.5    -- --defense vanilla    "${common[@]}" ;;
+  P)        run P        --decoder prophet                -- --defense vanilla    "${common[@]}" ;;
+  P_argmax) run P_argmax --decoder prophet --prophet_fill argmax -- --defense vanilla "${common[@]}" ;;
+  *) echo "usage: $0 R|D|A0.9|A0.7|A0.5|P|P_argmax   (env: RQ3_OUT, M, LIMIT)"; exit 1 ;;
+esac

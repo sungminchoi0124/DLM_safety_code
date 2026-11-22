@@ -68,6 +68,9 @@ class FakeTokenizer:
             return {"input_ids": t, "attention_mask": torch.ones_like(t)}
         return SimpleNamespace(input_ids=ids)
 
+    def get_vocab(self):
+        return {}
+
     def batch_decode(self, x, skip_special_tokens=True):
         return [" ".join(str(int(t)) for t in row) for row in x]
 

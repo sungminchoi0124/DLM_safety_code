@@ -5,6 +5,11 @@
     python -m commit_time.analyze score   --probe probe.npz --run TRACE_DIR LABELS.csv --out metrics.csv
     python -m commit_time.analyze behavior --resample_labels rs_labels.csv --metrics metrics.csv --out behavior.csv
     python -m commit_time.analyze flips   --ref metrics_ref.csv --acc metrics_acc.csv --out flips.csv
+    python -m commit_time.analyze gaps    --run TRACE_DIR [--run ...] --out gaps.csv
+
+gaps: Prophet copy-tendency check (handoff 8.1). Per forward of each trace, the answer-region top-2 logit gap
+over positions already committed vs still masked; per item the exit step Prophet would take (exact for a
+vanilla R trace) and the textual commit s_text. Needs traces recorded with logit statistics.
 
 labels.csv: item_index, label (harmful | refusal | unscored), plus branch_forward / branch_seed /
 is_reference for resample files. Read from eval_asr.py output; the model text is not copied.
@@ -19,7 +24,8 @@ from pathlib import Path
 import numpy as np
 
 from .capture import load_trace
-from .metrics import behavioural_commit, item_metrics, nearest_checkpoint
+from .metrics import (behavioural_commit, item_metrics, nearest_checkpoint, prophet_threshold_curve,
+                      simulated_exit_step, text_commit_step)
 from .probe import Probe, Traj, fit_probe
 
 CAT = {"UNSAFE_COMPLIANCE": "harmful", "SAFE_REFUSAL": "refusal"}
@@ -49,7 +55,8 @@ def cmd_labels(a):
     for i, it in enumerate(data):
         cat = (it.get("evaluation_result") or {}).get("response_safety_category")
         row = {"item_index": it.get("item_index", i), "label": CAT.get(cat, "unscored")}
-        for k in ("branch_forward", "branch_seed", "is_reference", "ref_forwards"):
+        for k in ("branch_forward", "branch_seed", "is_reference", "ref_forwards", "branch_exit_step",
+                  "branch_exited"):
             if k in it:
                 row[k] = it[k]
         rows.append(row)
@@ -155,6 +162,13 @@ def cmd_flips(a):
                      "frac_tokens_at_s_star_ref": float(r["frac_tokens_at_s_star"]),
                      "frac_tokens_at_s_star_acc": float(c["frac_tokens_at_s_star"]),
                      "max_bundle_before_acc": int(c["max_bundle_before"])})
+        if c.get("exit_step") not in (None, ""):
+            # H1 for Prophet: the accelerated run keeps the reference outcome when it exits after s*(R).
+            # Prophet == quota == original until the exit, so the reference trajectory is the right clock.
+            e, s_ref = int(c["exit_step"]), int(r["s_star"])
+            rows[-1].update({"s_star_ref": s_ref, "s_star_ref_censored": r["censored"] in ("True", True),
+                             "exit_step_acc": e, "exited_acc": c["exited"] in ("True", True),
+                             "exit_after_s_star_ref": e > s_ref})
     write_csv(a.out, rows)
     if rows:
         hes = np.array([r["n_hes_ref"] for r in rows])
@@ -162,6 +176,71 @@ def cmd_flips(a):
         med = np.median(hes)
         print(f"flip rate: n_hes_ref > {med:g}: {fl[hes > med].mean() if (hes > med).any() else float('nan'):.3f}"
               f" | <= {med:g}: {fl[hes <= med].mean():.3f}  (n={len(rows)})")
+        if "exit_after_s_star_ref" in rows[0]:
+            after = np.array([r["exit_after_s_star_ref"] for r in rows])
+            for name, m in (("exit > s*(R)", after), ("exit <= s*(R)", ~after)):
+                print(f"  {name}: n={int(m.sum())} flip rate="
+                      f"{fl[m].mean() if m.any() else float('nan'):.3f}")
+
+
+# --------------------------------------------------------------------------- prophet gaps
+def cmd_gaps(a):
+    rows, per_bin = [], {"committed": [[] for _ in range(a.bins)], "masked": [[] for _ in range(a.bins)]}
+    paired = []
+    for run_dir in a.run:
+        run_dir = Path(run_dir)
+        files = sorted((run_dir / "hidden").glob("item*.npz"))
+        if not files:
+            raise SystemExit(f"no traces in {run_dir}")
+        for f in files:
+            tr = load_trace(f)
+            if "gap_all" not in tr:
+                raise SystemExit(f"{f}: no logit statistics (re-run run_trace without --no_logit_stats)")
+            rem = np.nonzero(tr["n_remask"] > 0)[0]
+            T = int(rem[0] + 1) if rem.size else int(tr["hidden"].shape[0])
+            gc = np.asarray(tr["gap_committed"], float)[:T]
+            gm = np.asarray(tr["gap_masked"], float)[:T]
+            for fwd in range(T):
+                b = min(int(fwd / T * a.bins), a.bins - 1)
+                if np.isfinite(gc[fwd]):
+                    per_bin["committed"][b].append(gc[fwd])
+                if np.isfinite(gm[fwd]):
+                    per_bin["masked"][b].append(gm[fwd])
+            both = np.isfinite(gc) & np.isfinite(gm)
+            paired += list(gc[both] - gm[both])
+            thr = prophet_threshold_curve(T, T)
+            sim = simulated_exit_step(np.asarray(tr["gap_all"], float)[:T], T)
+            st = text_commit_step(tr["lead_unmasked"], int(tr["lead_k"]))
+            rows.append({"run": run_dir.name, "item_index": int(f.stem[4:]), "main_forwards": T,
+                         "sim_exit_step": sim, "s_text": st,
+                         "sim_exit_minus_s_text": (sim - st) if sim > 0 else "",
+                         "gap_committed_median": float(np.nanmedian(gc)) if np.isfinite(gc).any() else "",
+                         "gap_masked_median": float(np.nanmedian(gm)) if np.isfinite(gm).any() else "",
+                         "max_gap_all_minus_threshold": float(np.nanmax(np.asarray(tr["gap_all"])[:T] - thr))})
+    write_csv(a.out, rows)
+
+    def q(v):
+        v = np.asarray(v, float)
+        return {"n": int(v.size), **({k: float(np.percentile(v, p)) for k, p in
+                                      (("p10", 10), ("median", 50), ("p90", 90))} if v.size else {})}
+    sims = np.array([r["sim_exit_step"] for r in rows])
+    lead = np.array([r["sim_exit_minus_s_text"] for r in rows if r["sim_exit_minus_s_text"] != ""], float)
+    summary = {
+        "n_items": len(rows),
+        "bins": [{"forward_frac": [i / a.bins, (i + 1) / a.bins], "committed": q(per_bin["committed"][i]),
+                  "masked": q(per_bin["masked"][i])} for i in range(a.bins)],
+        "paired_committed_minus_masked": q(paired),
+        "share_forwards_committed_gt_masked": float(np.mean(np.array(paired) > 0)) if paired else None,
+        "sim_exit": {"exits": int((sims > 0).sum()), "never": int((sims <= 0).sum()),
+                     "exit_step": q(sims[sims > 0]),
+                     "exit_minus_s_text": q(lead)},
+    }
+    Path(a.out).with_suffix(".summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    pc = summary["paired_committed_minus_masked"]
+    print(f"{len(rows)} items; committed - masked gap (same forward): median={pc.get('median', float('nan')):.3f} "
+          f"(n={pc['n']}); share committed > masked={summary['share_forwards_committed_gt_masked']}; "
+          f"simulated Prophet exits {summary['sim_exit']['exits']}/{len(rows)}, "
+          f"median exit - s_text={summary['sim_exit']['exit_minus_s_text'].get('median', float('nan'))}")
 
 
 def main(argv=None):
@@ -181,8 +260,11 @@ def main(argv=None):
     s.add_argument("--level", type=float, default=0.9)
     s = sub.add_parser("flips"); s.add_argument("--ref", required=True); s.add_argument("--acc", required=True)
     s.add_argument("--out", required=True)
+    s = sub.add_parser("gaps"); s.add_argument("--run", action="append", required=True, metavar="TRACE_DIR")
+    s.add_argument("--out", required=True); s.add_argument("--bins", type=int, default=10)
     a = p.parse_args(argv)
-    {"labels": cmd_labels, "fit": cmd_fit, "score": cmd_score, "behavior": cmd_behavior, "flips": cmd_flips}[a.cmd](a)
+    {"labels": cmd_labels, "fit": cmd_fit, "score": cmd_score, "behavior": cmd_behavior, "flips": cmd_flips,
+     "gaps": cmd_gaps}[a.cmd](a)
 
 
 if __name__ == "__main__":

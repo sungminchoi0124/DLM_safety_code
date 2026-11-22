@@ -7,13 +7,24 @@
     python -m commit_time.run_trace --trace_dir $RQ3_OUT/trace/vanilla_t0.9 --decoder threshold --tau 0.9 \
         -- --defense vanilla --steps 128 --output_dir $RQ3_OUT/gen --tag rq3_t0.9
 
+    python -m commit_time.run_trace --trace_dir $RQ3_OUT/trace/P --decoder prophet \
+        -- --defense vanilla --steps 128 --output_dir $RQ3_OUT/gen --tag rq3_P
+
 Everything after `--` goes to run_generate.py (same config, prompts, seeding, output JSON for eval_asr.py).
 --decoder original   the original DiffuGuard generate() (any preset, incl. diffuguard), traced through hooks
 --decoder quota      commit_time.decode quota rule (must equal `original` on the vanilla preset)
 --decoder threshold  commit_time.decode Fast-dLLM threshold rule with --tau (vanilla preset only)
+--decoder prophet    commit_time.decode Prophet early exit on the quota rule (vanilla preset only);
+                     --prophet_thresholds / --prophet_phases / --answer_len / --prophet_fill
 
-Writes trace_dir/hidden/itemNNN.npz (hidden states + counts, no text), trace_dir/trace_meta.jsonl and
-trace_dir/trace_run.json. Model text stays in run_generate.py's generation JSON only.
+Every decoder also records per-forward logit statistics over the first --lead_k response positions (Prophet
+gap: all / committed / masked; RAEC refusal / compliance mass); --no_logit_stats turns that off. With
+--decoder original these are the gaps Prophet would see: Prophet is the quota rule until it exits, and quota
+reproduces original on the vanilla preset, so the first forward where gap_all >= threshold in an R trace is
+the exit step a Prophet run with the same seed takes.
+
+Writes trace_dir/hidden/itemNNN.npz (hidden states, counts, logit statistics, prophet_* arrays; no text),
+trace_dir/trace_meta.jsonl and trace_dir/trace_run.json. Model text stays in run_generate.py's generation JSON only.
 """
 from __future__ import annotations
 
@@ -23,25 +34,77 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 from ._dg import import_runner, sha12, split_argv
 from .capture import DEFAULT_LAYERS, TraceRecorder, parse_layers, write_meta_line
-from .decode import generate_response_like
+from .decode import PROPHET_PHASES, PROPHET_THRESHOLDS, generate_response_like
+from .token_sets import raec_token_sets
+
+
+def _floats(spec, n, name):
+    vals = tuple(float(v) for v in str(spec).split(",") if v.strip())
+    if len(vals) != n:
+        raise SystemExit(f"{name}: expected {n} comma-separated numbers, got {spec!r}")
+    return vals
+
+
+def decoder_kwargs(opts) -> dict:
+    """decode() keyword arguments for the chosen rule (shared with resample.py)."""
+    if opts.decoder != "prophet":
+        return {}
+    return {"prophet_thresholds": _floats(opts.prophet_thresholds, 3, "--prophet_thresholds"),
+            "prophet_phases": _floats(opts.prophet_phases, 2, "--prophet_phases"),
+            "answer_len": int(opts.answer_len), "prophet_fill": opts.prophet_fill}
+
+
+def add_prophet_args(p):
+    p.add_argument("--prophet_thresholds", default=",".join(map(str, PROPHET_THRESHOLDS)),
+                   help="early,mid,late gap thresholds (official 7.5,5.0,2.5; 'inf,inf,inf' never exits)")
+    p.add_argument("--prophet_phases", default=",".join(map(str, PROPHET_PHASES)),
+                   help="progress cut points (official 0.33,0.67)")
+    p.add_argument("--answer_len", type=int, default=16, help="Prophet answer region = first N response positions")
+    p.add_argument("--prophet_fill", choices=["x0", "argmax"], default="x0",
+                   help="all-in fill: x0 = Gumbel-noised argmax (official), argmax = noise-free (sensitivity)")
+
+
+def prophet_extra(info: dict) -> dict:
+    """Numeric arrays from DecodeResult.info for the npz (no text)."""
+    if not info:
+        return {}
+    return {"prophet_gap_all": np.array(info["gap_all"], np.float32),
+            "prophet_gap_threshold": np.array(info["gap_threshold"], np.float32),
+            "prophet_exited": np.int32(bool(info["exited"])),
+            "prophet_exit_step": np.int32(info["exit_step"]),
+            "prophet_n_filled_at_exit": np.int32(info["n_filled_at_exit"]),
+            "prophet_answer_len": np.int32(info["answer_len"])}
+
+
+def prophet_meta(info: dict) -> dict:
+    if not info:
+        return {}
+    return {k: info[k] for k in ("exited", "exit_step", "exit_reason", "exit_gap", "exit_threshold",
+                                 "n_filled_at_exit", "answer_len", "prophet_fill", "thresholds", "phases")}
 
 
 def build_parser():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--trace_dir", required=True)
-    p.add_argument("--decoder", choices=["original", "quota", "threshold"], default="original")
+    p.add_argument("--decoder", choices=["original", "quota", "threshold", "prophet"], default="original")
     p.add_argument("--tau", type=float, default=None, help="threshold for --decoder threshold")
+    add_prophet_args(p)
     p.add_argument("--layers", default=",".join(map(str, DEFAULT_LAYERS)))
-    p.add_argument("--lead_k", type=int, default=16, help="response positions that define the textual commit")
+    p.add_argument("--lead_k", type=int, default=16,
+                   help="response positions that define the textual commit and the logit-statistics window")
+    p.add_argument("--no_logit_stats", action="store_true", help="skip Prophet gaps / RAEC masses per forward")
     p.add_argument("--overwrite", action="store_true")
     return p
 
 
 def install(jbl, opts, trace_dir: Path):
     gfl = sys.modules["utility.generate_function_llada"]
-    state = {"idx": 0, "cues": None}
+    state = {"idx": 0, "cues": None, "masses": None}
+    dkw = decoder_kwargs(opts) if hasattr(opts, "prophet_thresholds") else {}
     orig_generate_response = jbl.generate_response
     orig_generate_llada = jbl.generate_llada
     captured = {}
@@ -62,9 +125,15 @@ def install(jbl, opts, trace_dir: Path):
         if state["cues"] is None:
             state["cues"] = gfl.build_cue_id_sets(tokenizer)
         acc, ref = state["cues"]
+        stats = not getattr(opts, "no_logit_stats", False)
+        if stats and state["masses"] is None:
+            state["masses"] = raec_token_sets(tokenizer)
+        m_ref, m_cmp = state["masses"] or (None, None)
         ids, _ = jbl.get_tokenized_input(prompt, tokenizer, model.device)
         rec = TraceRecorder(model, mask_id=args.mask_id, prompt_len=ids.shape[1], layers=layers,
-                            lead_k=opts.lead_k, accept_ids=acc, refuse_ids=ref)
+                            lead_k=opts.lead_k, accept_ids=acc, refuse_ids=ref, logit_stats=stats,
+                            mass_refuse_ids=m_ref, mass_comply_ids=m_cmp)
+        info = {}
         t0 = time.perf_counter()
         with rec:
             if opts.decoder == "original":
@@ -74,12 +143,14 @@ def install(jbl, opts, trace_dir: Path):
                 final = captured["x"]
             else:
                 text, res, _, _ = generate_response_like(jbl, vanilla_prompt, prompt, tokenizer, model, args,
-                                                         rule=opts.decoder, threshold=opts.tau)
+                                                         rule=opts.decoder, threshold=opts.tau, **dkw)
                 final = res.x
+                info = res.info
             rec.finish(final)
-        info = rec.save(trace_dir / "hidden" / f"item{idx:03d}.npz")
+        saved = rec.save(trace_dir / "hidden" / f"item{idx:03d}.npz", extra=prophet_extra(info))
         write_meta_line(trace_dir / "trace_meta.jsonl", {
-            "item_index": idx, "decoder": opts.decoder, "tau": opts.tau, **info,
+            "item_index": idx, "decoder": opts.decoder, "tau": opts.tau, **saved,
+            **({"prophet": prophet_meta(info)} if info else {}),
             "seconds": round(time.perf_counter() - t0, 3), "response_sha256_12": sha12(text)})
         return text
 

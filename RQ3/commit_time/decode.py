@@ -6,6 +6,16 @@ rule="quota"      the vanilla path of DiffuGuard's generate() (low_confidence, c
 rule="threshold"  Fast-dLLM's parallel rule (get_transfer_index with threshold): commit every masked position
                   whose confidence >= tau, and always the most confident one. Runs until no mask is left.
                   Confidence is computed in float32 (the quota path keeps the original model-dtype softmax).
+rule="prophet"    Prophet early exit (pixeli99/Prophet generate_earlyexit.py, commit 460afe4) on top of the quota
+                  rule. Every step, after the forward and before committing, the mean top-2 logit gap over the
+                  answer region A = [answer_start, answer_start + answer_len) is compared with a phase threshold
+                  (progress (i+1)/steps < 0.33: 7.5, < 0.67: 5.0, else 2.5; the official current_step is 1-based).
+                  The gap is averaged over every position of A whether it is already committed or not (as in the
+                  official code), from the raw logits (no Gumbel noise). If gap >= threshold, every remaining mask
+                  of the sequence (prompt masks included) is filled with this step's x0 and decoding stops. Until
+                  then the tokens are the quota rule's tokens (same RNG calls). Note: x0 is the Gumbel-noised
+                  argmax, so at temperature > 0 the all-in fill is sampled, not greedy (official behaviour);
+                  prophet_fill="argmax" is the noise-free variant for a sensitivity check.
 
 Snapshots / resume: `snapshot_at` keeps the state x_s before step s in memory (never written to disk, it
 holds model text). `decode(..., resume=snap, seed=k)` reseeds the RNG and continues from x_s; this is how
@@ -43,11 +53,16 @@ def get_num_transfer_tokens(mask_index, steps):
     return num
 
 
+PROPHET_THRESHOLDS = (7.5, 5.0, 2.5)   # official defaults: early / mid / late
+PROPHET_PHASES = (0.33, 0.67)          # progress cut points
+
+
 @dataclass
 class Snapshot:
     step: int
     x: torch.Tensor
     schedule: Optional[torch.Tensor] = None
+    prompt_len: Optional[int] = None   # start of the response tail (Prophet answer region)
 
 
 @dataclass
@@ -55,6 +70,30 @@ class DecodeResult:
     x: torch.Tensor
     nfe: int
     snapshots: dict = field(default_factory=dict)
+    info: dict = field(default_factory=dict)   # prophet: exit bookkeeping and per-forward gaps (no text)
+
+
+def prophet_threshold(step_1based: int, steps: int, thresholds=PROPHET_THRESHOLDS, phases=PROPHET_PHASES):
+    """should_early_exit() of the official code: progress = current_step / max_steps, current_step 1-based."""
+    progress = step_1based / steps
+    if progress < phases[0]:
+        return float(thresholds[0])
+    if progress < phases[1]:
+        return float(thresholds[1])
+    return float(thresholds[2])
+
+
+def answer_gaps(logits, x, positions, mask_id):
+    """Mean top-2 logit gap over `positions` of row 0: (all, committed in x, still masked in x); NaN if empty."""
+    if len(positions) == 0:
+        return float("nan"), float("nan"), float("nan")
+    top2 = torch.topk(logits[0, positions].float(), k=2, dim=-1).values
+    gap = top2[:, 0] - top2[:, 1]
+    masked = x[0, positions] == mask_id
+    g_all = float(gap.mean())
+    g_c = float(gap[~masked].mean()) if bool((~masked).any()) else float("nan")
+    g_m = float(gap[masked].mean()) if bool(masked.any()) else float("nan")
+    return g_all, g_c, g_m
 
 
 def _align_attention_mask(attention_mask, L, device):
@@ -73,11 +112,15 @@ def decode(model, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor
            gen_length: int, steps: int, temperature: float, mask_id: int = 126336,
            rule: str = "quota", threshold: Optional[float] = None,
            snapshot_at: Iterable[int] = (), resume: Optional[Snapshot] = None, seed: Optional[int] = None,
-           max_forwards: Optional[int] = None) -> DecodeResult:
+           max_forwards: Optional[int] = None,
+           prophet_thresholds=PROPHET_THRESHOLDS, prophet_phases=PROPHET_PHASES,
+           answer_len: int = 16, answer_start: Optional[int] = None, prophet_fill: str = "x0") -> DecodeResult:
     if resume is None and input_ids.shape[0] != 1:
         raise ValueError("batch size 1 only")
-    if rule not in ("quota", "threshold"):
+    if rule not in ("quota", "threshold", "prophet"):
         raise ValueError(rule)
+    if prophet_fill not in ("x0", "argmax"):
+        raise ValueError(prophet_fill)
     if rule == "threshold" and threshold is None:
         raise ValueError("threshold rule needs a threshold")
     device = next(model.parameters()).device
@@ -85,6 +128,7 @@ def decode(model, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor
 
     if resume is None:
         x = input_ids.clone().to(device)
+        prompt_len = int(input_ids.shape[1])
         if gen_length > 0:
             x = torch.cat([x, torch.full((1, int(gen_length)), mask_id, dtype=torch.long, device=device)], dim=1)
         start = 0
@@ -93,6 +137,7 @@ def decode(model, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor
         x = resume.x.clone().to(device)
         start = int(resume.step)
         schedule = resume.schedule
+        prompt_len = resume.prompt_len
     if seed is not None:
         torch.manual_seed(int(seed))
         if torch.cuda.is_available():
@@ -100,28 +145,54 @@ def decode(model, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor
     am = _align_attention_mask(attention_mask, x.shape[1], device)
 
     # one block covering every mask (DiffuGuard fill_all_masks / "safety guard" expansion)
-    if schedule is None and rule == "quota":
+    quota_like = rule in ("quota", "prophet")
+    if schedule is None and quota_like:
         schedule = get_num_transfer_tokens(x == mask_id, steps)
     n_masks0 = int((x == mask_id).sum())
     if max_forwards is None:
-        max_forwards = steps if rule == "quota" else n_masks0 + start
+        max_forwards = steps if quota_like else n_masks0 + start
+    info = {}
+    if rule == "prophet":
+        if answer_start is None:
+            if prompt_len is None:
+                raise ValueError("prophet: answer_start unknown (snapshot without prompt_len)")
+            answer_start = prompt_len
+        A = torch.arange(int(answer_start), min(int(answer_start) + int(answer_len), x.shape[1]), device=device)
+        info = {"exited": False, "exit_step": None, "exit_reason": "completed", "exit_threshold": None,
+                "exit_gap": None, "n_filled_at_exit": 0, "answer_start": int(answer_start),
+                "answer_len": int(len(A)), "prophet_fill": prophet_fill,
+                "thresholds": [float(t) for t in prophet_thresholds], "phases": [float(q) for q in prophet_phases],
+                "gap_all": [], "gap_committed": [], "gap_masked": [], "gap_threshold": []}
     snaps, nfe, i = {}, 0, start
     while True:
-        if rule == "quota" and i >= schedule.shape[1]:
+        if quota_like and i >= schedule.shape[1]:
             break
         if rule == "threshold" and (not bool((x == mask_id).any()) or i >= max_forwards):
             break
         if i in snapshot_at:
-            snaps[i] = Snapshot(step=i, x=x.clone(), schedule=schedule)
+            snaps[i] = Snapshot(step=i, x=x.clone(), schedule=schedule, prompt_len=prompt_len)
         mask_index = x == mask_id
         logits = model(x, attention_mask=am, output_hidden_states=False, return_dict=True).logits
         nfe += 1
         logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
         x0 = torch.argmax(logits_with_noise, dim=-1)
-        if rule == "quota":
+        if quota_like:
             p = F.softmax(logits, dim=-1)
             conf = torch.squeeze(torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1)
             _ = torch.rand((x0.shape[0], x0.shape[1]), device=x0.device)  # the original draws R every step
+            if rule == "prophet":
+                g_all, g_c, g_m = answer_gaps(logits, x, A, mask_id)
+                thr = prophet_threshold(i + 1, steps, prophet_thresholds, prophet_phases)
+                for key, val in (("gap_all", g_all), ("gap_committed", g_c), ("gap_masked", g_m),
+                                 ("gap_threshold", thr)):
+                    info[key].append(val)
+                if g_all >= thr:   # NaN never exits
+                    fill = x0 if prophet_fill == "x0" else torch.argmax(logits, dim=-1)
+                    info.update(exited=True, exit_step=i + 1, exit_reason="gap", exit_threshold=thr,
+                                exit_gap=g_all, n_filled_at_exit=int(mask_index.sum()))
+                    x[mask_index] = fill[mask_index]
+                    i += 1
+                    break
             x0 = torch.where(mask_index, x0, x)
             confidence = torch.where(mask_index, conf, -np.inf)
             k = int(schedule[0, i].item())
@@ -139,11 +210,14 @@ def decode(model, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor
             transfer &= mask_index
         x[transfer] = x0[transfer]
         i += 1
-    return DecodeResult(x=x, nfe=nfe, snapshots=snaps)
+    if rule == "prophet" and not info["exited"]:
+        info["exit_step"] = i   # ran the full schedule (= steps for a fresh decode)
+    return DecodeResult(x=x, nfe=nfe, snapshots=snaps, info=info)
 
 
 def generate_response_like(jbl, vanilla_prompt: str, prompt: str, tokenizer, model, args, *,
                            rule: str, threshold: Optional[float] = None, **decode_kw):
+    """decode_kw: snapshot_at, prophet_thresholds, prophet_phases, answer_len, prophet_fill, ..."""
     """Mirror of the original models/jailbreakbench_llada.generate_response (no system prompt) on decode()."""
     if getattr(args, "cfg_scale", 0.0) not in (0, 0.0):
         raise SystemExit("trace decoder: cfg_scale must be 0")

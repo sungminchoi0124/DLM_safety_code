@@ -49,6 +49,32 @@ def repair_start(n_remask: np.ndarray) -> int:
     return int(idx[0] + 1) if idx.size else -1
 
 
+PROPHET_THRESHOLDS = (7.5, 5.0, 2.5)
+PROPHET_PHASES = (0.33, 0.67)
+
+
+def prophet_threshold_curve(n: int, steps: int, thresholds=PROPHET_THRESHOLDS, phases=PROPHET_PHASES):
+    """Threshold Prophet applies at forward f = 0..n-1 (official progress = (f + 1) / steps)."""
+    prog = (np.arange(n) + 1) / float(steps)
+    return np.where(prog < phases[0], thresholds[0], np.where(prog < phases[1], thresholds[1], thresholds[2]))
+
+
+def simulated_exit_step(gap_all: np.ndarray, steps: int, thresholds=PROPHET_THRESHOLDS,
+                        phases=PROPHET_PHASES) -> int:
+    """Exit step (1-based forward count) a Prophet run would take given these per-forward answer gaps, or -1.
+
+    Exact for a vanilla quota / original trace with the same seed: Prophet decodes the same tokens until it
+    exits, so its gaps up to the exit are these gaps."""
+    g = np.asarray(gap_all, float)
+    hit = np.nonzero(g >= prophet_threshold_curve(g.size, steps, thresholds, phases))[0]  # NaN -> False
+    return int(hit[0] + 1) if hit.size else -1
+
+
+def _nanmedian(a):
+    a = np.asarray(a, float)
+    return float(np.nanmedian(a)) if np.isfinite(a).any() else np.nan
+
+
 def item_metrics(margins: np.ndarray, y: int, tau: float, tr: dict) -> dict:
     """One row of commit_metrics.csv. `tr` = arrays from capture.load_trace."""
     d = np.asarray(margins, float)
@@ -82,6 +108,29 @@ def item_metrics(margins: np.ndarray, y: int, tau: float, tr: dict) -> dict:
         "final_sign_ok": bool(T and np.sign(d[-1]) == (1 if y == 1 else -1)),
         "repair_start": r0,
     }
+    if "prophet_exit_step" in tr:
+        # Prophet run: the last forward (T - 1) is the exit forward; its transition holds the all-in fill.
+        exited = bool(int(tr["prophet_exited"]))
+        e = int(tr["prophet_exit_step"])
+        frac = (n_tracked - int(n_masks[T - 1])) / n_tracked if (exited and T and n_tracked) else 1.0
+        row.update({
+            "exited": exited,
+            "exit_step": e,
+            "exit_frac_nfe": e / T if T else np.nan,
+            "exit_frac_tokens": frac,               # share of tracked tokens committed before the all-in fill
+            "n_filled_at_exit": int(tr["prophet_n_filled_at_exit"]),
+            # within-run version of the H1 test; the cross-run one (s* of R) is in `analyze flips`
+            "exit_after_s_star": bool(e > s),
+        })
+    if "gap_all" in tr:
+        g_all = np.asarray(tr["gap_all"], float)[:main_end]
+        row.update({
+            "sim_exit_step": simulated_exit_step(g_all, main_end),
+            "gap_committed_median": _nanmedian(np.asarray(tr["gap_committed"])[:main_end]),
+            "gap_masked_median": _nanmedian(np.asarray(tr["gap_masked"])[:main_end]),
+            "mass_refuse_first": float(tr["mass_refuse"][0]) if T else np.nan,
+            "mass_comply_first": float(tr["mass_comply"][0]) if T else np.nan,
+        })
     if r0 > 0:
         pre = d[r0 - 1]
         row.update({
