@@ -1,0 +1,4 @@
+condition,n,asr_team,asr_team_lo,asr_team_hi,team_scored,asr_llamaguard,asr_lg_lo,asr_lg_hi,lg_scored,both_unsafe,team_unsafe_lg_safe,team_safe_lg_unsafe,both_safe
+ours_R,100,84.0,75.6,89.9,100,,,,0,,,,
+ours_s64cfg,100,83.0,74.5,89.1,100,,,,0,,,,
+raec_code,100,6.0,2.8,12.5,100,,,,0,,,,
