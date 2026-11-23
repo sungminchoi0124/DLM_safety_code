@@ -26,6 +26,9 @@ from safegate.trace import StepTrace
 rq1 = rq2.rq1        # DiffuGuard/run_gsm8k.py
 ID_LISTS = {"test": REPO / "RQ1" / "data" / "ids" / "gsm8k_250.txt", "dev": SG_DIR / "data" / "dev_gsm30.txt"}
 GSM_TASK = dict(gen_length=256, block_length=32, temperature=0.0)
+# the committed lm_eval 5-shot dump (sha256 checked by rq1.load_items); rq1.DEFAULT_PROMPTS on this branch points
+# to the git-ignored outputs/data/ copy, which only exists where prepare_gsm8k.py was run
+PROMPTS = REPO / "DiffuGuard" / "data" / "gsm8k_5shot_lmeval.json"
 
 
 def run_id(args):
@@ -91,7 +94,7 @@ def build_parser():
     p.add_argument("--limit", type=int)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--tag")
-    p.add_argument("--prompt_file", default=str(rq1.DEFAULT_PROMPTS))
+    p.add_argument("--prompt_file", default=str(PROMPTS))
     p.add_argument("--output_dir", default=str(SG_DIR / "outputs" / "gsm8k"))
     p.add_argument("--dry_run", action="store_true")
     common.add_model_args(p)
