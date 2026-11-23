@@ -23,21 +23,24 @@ REPO="$(cd "$RQ3_DIR/.." && pwd)"
 M="${M:-$REPO/hf_models/LLaDA-8B-Instruct}"
 PY="${PYTHON:-python}"
 LIMIT="${LIMIT:-}"                       # e.g. LIMIT=5 for a smoke run (adds _limit5 to the output name)
+SEED="${SEED:-}"                         # e.g. SEED=1 -> run_generate --seed 1, names get _s1 (unset = config seed 0)
+SFX="${SEED:+_s$SEED}${LIMIT:+_limit$LIMIT}"
 mkdir -p "$RQ3_OUT/logs" "$RQ3_OUT/gen" "$RQ3_OUT/trace"
 
 common=(--model_path "$M" --attack dija_jbb --steps 128 --output_dir "$RQ3_OUT/gen")
 [ -n "$LIMIT" ] && common+=(--limit "$LIMIT")
+[ -n "$SEED" ] && common+=(--seed "$SEED")
 
 run() {  # name, own args..., -- , run_generate args...
   local name=$1; shift
-  local dir="$RQ3_OUT/trace/$name${LIMIT:+_limit$LIMIT}"
+  local dir="$RQ3_OUT/trace/$name$SFX"
   cd "$RQ3_DIR"
-  "$PY" -m commit_time.run_trace --trace_dir "$dir" "$@" --tag "rq3_$name"
+  "$PY" -m commit_time.run_trace --trace_dir "$dir" "$@" --tag "rq3_$name${SEED:+_s$SEED}"
   echo "trace -> $dir"
 }
 
 judge() {  # team judge on both spans -> labels.csv (DIJA infill, main) and labels_tail.csv (assistant answer)
-  local name=$1 dir="$RQ3_OUT/trace/$1${LIMIT:+_limit$LIMIT}" gen tail
+  local name=$1 dir="$RQ3_OUT/trace/$1$SFX" gen tail
   [ -f "$dir/trace_run.json" ] || { echo "no finished trace: $dir"; exit 1; }
   gen=$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['output_json'])" "$dir/trace_run.json")
   tail=$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['tail_json'] or '')" "$dir/trace_run.json")
@@ -61,5 +64,5 @@ case "${1:-}" in
   A0.5)     run A0.5     --decoder threshold --tau 0.5    -- --defense vanilla    "${common[@]}" ;;
   P)        run P        --decoder prophet                -- --defense vanilla    "${common[@]}" ;;
   P_argmax) run P_argmax --decoder prophet --prophet_fill argmax -- --defense vanilla "${common[@]}" ;;
-  *) echo "usage: $0 R|D|A0.9|A0.7|A0.5|P|P_argmax | judge <setting>   (env: RQ3_OUT, M, LIMIT)"; exit 1 ;;
+  *) echo "usage: $0 R|D|A0.9|A0.7|A0.5|P|P_argmax | judge <setting>   (env: RQ3_OUT, M, LIMIT, SEED)"; exit 1 ;;
 esac

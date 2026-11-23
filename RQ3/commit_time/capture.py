@@ -9,6 +9,8 @@ sequence are rejected (the pooled positions would change meaning).
 Index convention
   forward f = 0..T-1 sees state x_f (before the commits of step f); x_T = final output.
   hidden[f]            pooled hidden state of forward f          [T, n_layers, d]
+  hidden_infill[f]     same, pooled over the tracked prompt masks only (DIJA infill); zeros if none
+  hidden_tail[f]       same, pooled over the tracked response positions only (assistant answer)
   n_masks[f]           tracked positions still masked in x_f     [T+1]
   n_commit[f]          tracked positions committed by step f      [T]   (masked in x_f, unmasked in x_{f+1})
   n_remask[f]          tracked positions re-masked by step f      [T]   (DiffuGuard repair)
@@ -115,8 +117,14 @@ class TraceRecorder:
         self.infill_pos = None     # LongTensor of the first lead_k prompt-mask positions (subset of tracked)
         self.seq_len = None
         self.prev_ids = None
-        self.hidden = []           # list of [n_layers, d] float16 arrays
+        self.hidden = []           # list of [n_layers, d] float16 arrays (all tracked positions)
+        self.hidden_infill = []    # same, prompt-mask positions only
+        self.hidden_tail = []      # same, response positions only
         self._cur = {}
+        self._cur_infill = {}
+        self._cur_tail = {}
+        self._infill_all = None    # LongTensor: tracked positions < prompt_len
+        self._tail_all = None      # LongTensor: tracked positions >= prompt_len
         self.n_masks, self.n_commit, self.n_remask = [], [], []
         self.lead_unmasked, self.cue_accept, self.cue_refuse = [], [], []
         self.infill_unmasked = []
@@ -154,6 +162,8 @@ class TraceRecorder:
             resp = self.tracked[self.tracked >= self.prompt_len]
             self.lead_pos = resp[: self.lead_k]
             self.infill_pos = self.tracked[self.tracked < self.prompt_len][: self.lead_k]
+            self._infill_all = self.tracked[self.tracked < self.prompt_len]
+            self._tail_all = self.tracked[self.tracked >= self.prompt_len]
         elif ids.shape[1] != self.seq_len:
             raise RuntimeError("TraceRecorder: partial-sequence forward (KV cache?) is not supported; "
                                "run the trace with use_cache=False / dual_cache=False")
@@ -166,7 +176,7 @@ class TraceRecorder:
         self.infill_unmasked.append(int((cur[self.infill_pos] != self.mask_id).sum()))
         self._infill_masked = cur[self.infill_pos] == self.mask_id
         self.prev_ids = cur
-        self._cur = {}
+        self._cur, self._cur_infill, self._cur_tail = {}, {}, {}
 
     def _post(self, _module, _args, out):
         logits = getattr(out, "logits", None)
@@ -205,8 +215,15 @@ class TraceRecorder:
             h = out[0] if isinstance(out, (tuple, list)) else out
             if h.dim() != 3 or self.tracked is None or h.shape[1] != self.seq_len:
                 return
-            pooled = h[0, self.tracked.to(h.device)].float().mean(dim=0)
-            self._cur[name] = pooled.detach().cpu().numpy().astype(np.float16)
+            hf = h[0].float()
+
+            def pool(idx):
+                if idx is None or idx.numel() == 0:
+                    return np.zeros(hf.shape[-1], np.float16)
+                return hf[idx.to(h.device)].mean(dim=0).detach().cpu().numpy().astype(np.float16)
+            self._cur[name] = pool(self.tracked)
+            self._cur_infill[name] = pool(self._infill_all)
+            self._cur_tail[name] = pool(self._tail_all)
         return hook
 
     def _flush(self):
@@ -215,7 +232,9 @@ class TraceRecorder:
             if missing:
                 raise RuntimeError(f"TraceRecorder: layers {missing} produced no output in this forward")
             self.hidden.append(np.stack([self._cur[n] for n in self.layer_names]))
-            self._cur = {}
+            self.hidden_infill.append(np.stack([self._cur_infill[n] for n in self.layer_names]))
+            self.hidden_tail.append(np.stack([self._cur_tail[n] for n in self.layer_names]))
+            self._cur, self._cur_infill, self._cur_tail = {}, {}, {}
 
     def _transition(self, prev, cur):
         tp, tc = prev[self.tracked], cur[self.tracked]
@@ -253,6 +272,9 @@ class TraceRecorder:
             extra = {k: np.array(v, np.float32) for k, v in self.logit.items()}
         return extra | {
             "hidden": np.stack(self.hidden) if T else np.zeros((0, len(self.layer_names), 0), np.float16),
+            "hidden_infill": (np.stack(self.hidden_infill) if T
+                              else np.zeros((0, len(self.layer_names), 0), np.float16)),
+            "hidden_tail": np.stack(self.hidden_tail) if T else np.zeros((0, len(self.layer_names), 0), np.float16),
             "layer_names": np.array(self.layer_names),
             "n_masks": np.array(self.n_masks, np.int32),
             "n_commit": np.array(self.n_commit, np.int32),

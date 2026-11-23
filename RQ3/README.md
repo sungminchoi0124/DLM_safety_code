@@ -77,7 +77,14 @@ DIJA 프롬프트는 사용자 턴 안에 빈칸(마스크)이 있다. 그래서
   - 인필 기준은 `labels.csv`, 답변 기준은 `labels_tail.csv`로 trace 폴더에 저장한다.
   - 프로브와 s\*의 주 분석은 인필 라벨로 한다. 답변 라벨은 보조로 쓴다(해로운 사례가 적다).
 - **Prophet:** 답 영역은 공식대로 assistant 답변 앞 16칸이다. 인필 쪽 격차는 비교용으로만 기록한다.
-- **은닉 상태:** 추적 위치 전체(인필 + 답변)의 평균이다. 이전과 같다.
+- **은닉 상태:** 세 가지를 저장한다(2026-11-23부터).
+  - `hidden`: 추적 위치 전체(인필 + 답변) 평균
+  - `hidden_infill`: 인필 위치만의 평균
+  - `hidden_tail`: 답변 위치만의 평균
+  - 프로브는 `analyze fit --region all|infill|tail`로 영역을 고른다. `score`는 fit 때 고른 영역을 그대로 쓴다.
+- **시드:** `SEED=1000 bash scripts/run_traces.sh R`처럼 돌리면 이름에 `_s1000`이 붙는다.
+  - 문항마다 `seed + 문항 번호`로 시드를 정하므로, 시드끼리는 100 이상 떨어뜨린다.
+  - 전체 실행: `SETTINGS="R D" SEEDS="0 1000 2000" SEEDS_D="0 1000" bash scripts/run_all_traces.sh`
 
 ### Prophet 구현 세부 (공식 `generate_earlyexit.py`, commit `460afe4` 기준)
 - **판정 시점:** 매 스텝 forward 직후, 커밋하기 전에 판정한다.

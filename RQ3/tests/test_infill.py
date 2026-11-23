@@ -83,3 +83,45 @@ def test_run_trace_writes_tail_json(tmp_path):
     assert all(r["response_span"] == "assistant_tail" for r in recs)
     with pytest.raises(SystemExit):
         write_tail_json(gen, {0: "tail0"})
+
+
+def test_region_pooled_hidden(model, prompt):
+    _, rec = _run(model, prompt)
+    a = rec.arrays()
+    T = a["hidden"].shape[0]
+    assert a["hidden_infill"].shape == a["hidden_tail"].shape == a["hidden"].shape
+    n_i, n_t = int(a["n_infill_tracked"]), int(a["n_response_tracked"])
+    mix = (n_i * a["hidden_infill"].astype(np.float32) + n_t * a["hidden_tail"].astype(np.float32)) / (n_i + n_t)
+    assert np.allclose(mix, a["hidden"].astype(np.float32), atol=2e-2)      # all = count-weighted mix
+    assert not np.allclose(a["hidden_infill"], a["hidden_tail"])
+    assert T > 0
+
+
+def test_region_without_prompt_masks_is_zero(model, prompt):
+    p = prompt.clone()
+    p[p == MASK] = 7
+    _, rec = _run(model, p)
+    a = rec.arrays()
+    assert not a["hidden_infill"].any() and np.allclose(a["hidden_tail"], a["hidden"])
+
+
+def test_fit_score_region(model, prompt, tmp_path):
+    from commit_time import analyze
+    d = tmp_path / "run"
+    labels = []
+    for i in range(12):
+        torch.manual_seed(i)
+        rec2 = TraceRecorder(model, mask_id=MASK, prompt_len=prompt.shape[1], layers=(1, FINAL), lead_k=LEAD)
+        with rec2:
+            r = decode(model, prompt, None, gen_length=GEN, steps=STEPS, temperature=1.0, mask_id=MASK, rule="quota")
+            rec2.finish(r.x)
+        rec2.save(d / "hidden" / f"item{i:03d}.npz")
+        labels.append({"item_index": i, "label": "harmful" if i % 2 else "refusal"})
+    lab = tmp_path / "labels.csv"
+    analyze.write_csv(lab, labels)
+    probe = tmp_path / "probe.npz"
+    analyze.main(["fit", "--run", str(d), str(lab), "--out", str(probe), "--folds", "3", "--region", "infill"])
+    assert json.loads(probe.with_suffix(".report.json").read_text())["region"] == "infill"
+    out = tmp_path / "m.csv"
+    analyze.main(["score", "--probe", str(probe), "--run", str(d), str(lab), "--out", str(out)])
+    assert len(out.read_text().strip().splitlines()) == 13

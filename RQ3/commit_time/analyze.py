@@ -2,7 +2,12 @@
 
     python -m commit_time.analyze labels  EVAL_JSON --out labels.csv
     python -m commit_time.analyze fit     --run TRACE_DIR LABELS.csv [--run ...] --out probe.npz [--mode traj_mean]
+                                          [--region all|infill|tail]
     python -m commit_time.analyze score   --probe probe.npz --run TRACE_DIR LABELS.csv --out metrics.csv
+
+--region picks the pooled hidden state the probe reads: all = every tracked mask (default, older traces),
+infill = prompt masks only (DIJA infill), tail = response positions only. fit stores it in probe.report.json
+and score uses the same region.
     python -m commit_time.analyze behavior --resample_labels rs_labels.csv --metrics metrics.csv --out behavior.csv
     python -m commit_time.analyze flips   --ref metrics_ref.csv --acc metrics_acc.csv --out flips.csv
     python -m commit_time.analyze gaps    --run TRACE_DIR [--run ...] --out gaps.csv
@@ -70,8 +75,12 @@ def _labels_map(path):
             if r.get("branch_forward") in (None, "", "-1")}
 
 
-def load_trajs(run_dir, labels_csv):
+REGION_KEY = {"all": "hidden", "infill": "hidden_infill", "tail": "hidden_tail"}
+
+
+def load_trajs(run_dir, labels_csv, region="all"):
     run_dir = Path(run_dir)
+    key = REGION_KEY[region]
     lab = _labels_map(labels_csv)
     out = []
     for f in sorted((run_dir / "hidden").glob("item*.npz")):
@@ -79,9 +88,13 @@ def load_trajs(run_dir, labels_csv):
         if lab.get(idx) not in ("harmful", "refusal"):
             continue
         tr = load_trace(f)
+        if key not in tr:
+            raise SystemExit(f"{f}: no '{key}' (trace recorded before region pooling); use --region all")
+        if region == "infill" and int(tr.get("n_infill_tracked", 1)) == 0:
+            continue                                    # no prompt masks: nothing to pool
         rem = np.nonzero(tr["n_remask"] > 0)[0]
         main_end = int(rem[0] + 1) if rem.size else tr["hidden"].shape[0]
-        out.append((Traj(run=run_dir.name, item=idx, y=int(lab[idx] == "harmful"), H=tr["hidden"],
+        out.append((Traj(run=run_dir.name, item=idx, y=int(lab[idx] == "harmful"), H=tr[key],
                          layer_names=[str(x) for x in tr["layer_names"]], main_end=main_end), tr))
     if not out:
         raise SystemExit(f"no labelled traces in {run_dir}")
@@ -92,8 +105,9 @@ def load_trajs(run_dir, labels_csv):
 def cmd_fit(a):
     trajs = []
     for run_dir, lab in a.run:
-        trajs += [t for t, _ in load_trajs(run_dir, lab)]
+        trajs += [t for t, _ in load_trajs(run_dir, lab, a.region)]
     probe, report = fit_probe(trajs, mode=a.mode, n_folds=a.folds)
+    report["region"] = a.region
     probe.save(Path(a.out), report)
     sel = report["selected"]
     print(f"probe layer={probe.layer} C={probe.C} tau={probe.tau:.3f} "
@@ -102,9 +116,11 @@ def cmd_fit(a):
 
 def cmd_score(a):
     probe = Probe.load(Path(a.probe))
+    rep = Path(a.probe).with_suffix(".report.json")
+    region = json.loads(rep.read_text(encoding="utf-8")).get("region", "all") if rep.exists() else "all"
     rows, margins = [], {}
     for run_dir, lab in a.run:
-        for t, tr in load_trajs(run_dir, lab):
+        for t, tr in load_trajs(run_dir, lab, region):
             d = probe.margins(t.H)
             margins[f"{t.run}/{t.item}"] = d.astype(np.float32)
             rows.append({"run": t.run, "item_index": t.item, **item_metrics(d, t.y, probe.tau, tr)})
@@ -252,6 +268,7 @@ def main(argv=None):
     s.add_argument("--out", required=True); s.add_argument("--mode", choices=["traj_mean", "all_steps"],
                                                            default="traj_mean")
     s.add_argument("--folds", type=int, default=5)
+    s.add_argument("--region", choices=sorted(REGION_KEY), default="all")
     s = sub.add_parser("score"); s.add_argument("--probe", required=True)
     s.add_argument("--run", nargs=2, action="append", required=True, metavar=("TRACE_DIR", "LABELS_CSV"))
     s.add_argument("--out", required=True)
