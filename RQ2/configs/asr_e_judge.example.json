@@ -1,0 +1,9 @@
+{
+  "judge_model": null,
+  "judge_prompt": "code",
+  "question": "auto",
+  "reasoning_effort": "none",
+  "max_completion_tokens": 800,
+  "workers": 2,
+  "status": "template; model and provider must be selected before API calls"
+}

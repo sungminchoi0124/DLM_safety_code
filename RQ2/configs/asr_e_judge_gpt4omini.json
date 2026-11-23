@@ -1,0 +1,12 @@
+{
+  "judge_model": "gpt-4o-mini-2024-07-18",
+  "judge_prompt": "code",
+  "question": "auto",
+  "reasoning_effort": "none",
+  "max_completion_tokens": 800,
+  "workers": 2,
+  "confirmed_by_user": true,
+  "confirmed_kst": "2026-11-13T12:15:33.572524+09:00",
+  "comparison_to": "gpt-6-luna",
+  "reasoning_parameter_sent": false
+}
