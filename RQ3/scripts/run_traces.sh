@@ -27,6 +27,8 @@ SEED="${SEED:-}"                         # e.g. SEED=1 -> run_generate --seed 1,
 ATTACK="${ATTACK:-dija_jbb}"             # config attack entry; others (pad_advbench, jbb_behaviors, wildjailbreak) are
                                          #   for probe training only and get the attack name as a prefix: pad_advbench__R
 PFX=""; [ "$ATTACK" != dija_jbb ] && PFX="${ATTACK}__"
+# LAYERS: hidden-state layers to store (default 23 only; the probe picked b23 every time, and /root sits on a
+#   node-shared disk that fills up). Use LAYERS=7,15,23,final for the old 4-layer traces.
 SFX="${SEED:+_s$SEED}${LIMIT:+_limit$LIMIT}"
 mkdir -p "$RQ3_OUT/logs" "$RQ3_OUT/gen" "$RQ3_OUT/trace"
 
@@ -38,7 +40,7 @@ run() {  # name, own args..., -- , run_generate args...
   local name=$1; shift
   local dir="$RQ3_OUT/trace/$PFX$name$SFX"
   cd "$RQ3_DIR"
-  "$PY" -m commit_time.run_trace --trace_dir "$dir" "$@" --tag "rq3_$PFX$name${SEED:+_s$SEED}"
+  "$PY" -m commit_time.run_trace --trace_dir "$dir" --layers "${LAYERS:-23}" "$@" --tag "rq3_$PFX$name${SEED:+_s$SEED}"
   echo "trace -> $dir"
 }
 

@@ -19,7 +19,8 @@ RQ3_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${RQ3_OUT:?export RQ3_OUT=/root/rq3-outputs (outside git)}"
 SETTINGS="${SETTINGS:-R P P_argmax A0.9 A0.7 A0.5 D}"
 WORKSPACE_ID="${WORKSPACE_ID:-85899414157}"
-MIN_FREE_GB="${MIN_FREE_GB:-3}"
+TEST_WRITE_GB="${TEST_WRITE_GB:-1}"   # really write this much before each run: /root is a node-shared XFS whose
+                                       # free space depends on other tenants, and df shows only our quota
 LOGS="$RQ3_OUT/logs"; STATUS="$LOGS/all_status.tsv"
 mkdir -p "$LOGS"
 
@@ -31,8 +32,10 @@ for s in $SETTINGS; do
   for seed in ${seeds:-none}; do
     pfx=""; [ "${ATTACK:-dija_jbb}" != dija_jbb ] && pfx="${ATTACK}__"
     [ "$seed" = none ] && unset SEED && name="$pfx$s" || { export SEED="$seed"; name="$pfx${s}_s$seed"; }
-    free_gb=$(df --output=avail -BG /root | tail -1 | tr -dc 0-9)
-    if [ "${free_gb:-0}" -lt "$MIN_FREE_GB" ]; then status "$name" "skipped: only ${free_gb} GB free on /root"; break 2; fi
+    if ! dd if=/dev/zero of="$RQ3_OUT/.write_test" bs=1M count=$((TEST_WRITE_GB * 1024)) status=none conv=fsync 2>/dev/null; then
+      rm -f "$RQ3_OUT/.write_test"; status "$name" "skipped: cannot write ${TEST_WRITE_GB} GB on /root (shared disk full)"; break 2
+    fi
+    rm -f "$RQ3_OUT/.write_test"
     status "$name" "start"
     if bash "$RQ3_DIR/scripts/run_traces.sh" "$s" > "$LOGS/$name.log" 2>&1; then
       status "$name" "trace ok"
