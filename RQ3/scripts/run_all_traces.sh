@@ -9,6 +9,7 @@
 #      SEEDS    run_generate --seed values (default: unset = config seed 0, names without _s suffix)
 #               Seeding is seed + item_index, so use seeds >= 100 apart (0 1000 2000) to avoid shared RNG streams.
 #      SEEDS_<setting> per-setting override (dots -> _, e.g. SEEDS_D="0 1000", SEEDS_A0_9="0")
+#      ATTACK   config attack entry (default dija_jbb); others are for probe training and get a name prefix
 #      NO_STOP=1 keeps the Workspace running; WORKSPACE_ID (default: dlmRQ3 85899414157) needs `vessl` inside.
 # Outputs go straight to $RQ3_OUT on /root (checked writable before use). A failed run is logged and skipped.
 # Status lines: $RQ3_OUT/logs/all_status.tsv
@@ -28,7 +29,8 @@ for s in $SETTINGS; do
   var="SEEDS_${s//./_}"
   seeds="${!var:-${SEEDS:-}}"
   for seed in ${seeds:-none}; do
-    [ "$seed" = none ] && unset SEED && name="$s" || { export SEED="$seed"; name="${s}_s$seed"; }
+    pfx=""; [ "${ATTACK:-dija_jbb}" != dija_jbb ] && pfx="${ATTACK}__"
+    [ "$seed" = none ] && unset SEED && name="$pfx$s" || { export SEED="$seed"; name="$pfx${s}_s$seed"; }
     free_gb=$(df --output=avail -BG /root | tail -1 | tr -dc 0-9)
     if [ "${free_gb:-0}" -lt "$MIN_FREE_GB" ]; then status "$name" "skipped: only ${free_gb} GB free on /root"; break 2; fi
     status "$name" "start"

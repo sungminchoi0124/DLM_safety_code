@@ -24,30 +24,36 @@ M="${M:-$REPO/hf_models/LLaDA-8B-Instruct}"
 PY="${PYTHON:-python}"
 LIMIT="${LIMIT:-}"                       # e.g. LIMIT=5 for a smoke run (adds _limit5 to the output name)
 SEED="${SEED:-}"                         # e.g. SEED=1 -> run_generate --seed 1, names get _s1 (unset = config seed 0)
+ATTACK="${ATTACK:-dija_jbb}"             # config attack entry; others (pad_advbench, jbb_behaviors, wildjailbreak) are
+                                         #   for probe training only and get the attack name as a prefix: pad_advbench__R
+PFX=""; [ "$ATTACK" != dija_jbb ] && PFX="${ATTACK}__"
 SFX="${SEED:+_s$SEED}${LIMIT:+_limit$LIMIT}"
 mkdir -p "$RQ3_OUT/logs" "$RQ3_OUT/gen" "$RQ3_OUT/trace"
 
-common=(--model_path "$M" --attack dija_jbb --steps 128 --output_dir "$RQ3_OUT/gen")
+common=(--model_path "$M" --attack "$ATTACK" --steps 128 --output_dir "$RQ3_OUT/gen")
 [ -n "$LIMIT" ] && common+=(--limit "$LIMIT")
 [ -n "$SEED" ] && common+=(--seed "$SEED")
 
 run() {  # name, own args..., -- , run_generate args...
   local name=$1; shift
-  local dir="$RQ3_OUT/trace/$name$SFX"
+  local dir="$RQ3_OUT/trace/$PFX$name$SFX"
   cd "$RQ3_DIR"
-  "$PY" -m commit_time.run_trace --trace_dir "$dir" "$@" --tag "rq3_$name${SEED:+_s$SEED}"
+  "$PY" -m commit_time.run_trace --trace_dir "$dir" "$@" --tag "rq3_$PFX$name${SEED:+_s$SEED}"
   echo "trace -> $dir"
 }
 
 judge() {  # team judge on both spans -> labels.csv (DIJA infill, main) and labels_tail.csv (assistant answer)
-  local name=$1 dir="$RQ3_OUT/trace/$1$SFX" gen tail
+  local name=$1 dir="$RQ3_OUT/trace/$PFX$1$SFX" gen tail infill
   [ -f "$dir/trace_run.json" ] || { echo "no finished trace: $dir"; exit 1; }
   gen=$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['output_json'])" "$dir/trace_run.json")
   tail=$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['tail_json'] or '')" "$dir/trace_run.json")
   [ -n "$tail" ] || { echo "trace has no tail_json (older run_trace)"; exit 1; }
-  for span in main tail; do
+  infill=$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1])).get('infill_json') or '')" "$dir/trace_run.json")
+  local spans="main tail"; [ -n "$infill" ] && spans="main tail infill"
+  for span in $spans; do
     local g=$gen out=labels.csv
     [ $span = tail ] && g=$tail && out=labels_tail.csv
+    [ $span = infill ] && g=$infill && out=labels_infill.csv
     local ev="$(dirname "$g")/eval_$(basename "$g")"
     [ -f "$ev" ] || (cd "$REPO/DiffuGuard" && "$PY" eval_asr.py "$g" --output "$ev")
     (cd "$RQ3_DIR" && "$PY" -m commit_time.analyze labels "$ev" --out "$dir/$out")
@@ -64,5 +70,5 @@ case "${1:-}" in
   A0.5)     run A0.5     --decoder threshold --tau 0.5    -- --defense vanilla    "${common[@]}" ;;
   P)        run P        --decoder prophet                -- --defense vanilla    "${common[@]}" ;;
   P_argmax) run P_argmax --decoder prophet --prophet_fill argmax -- --defense vanilla "${common[@]}" ;;
-  *) echo "usage: $0 R|D|A0.9|A0.7|A0.5|P|P_argmax | judge <setting>   (env: RQ3_OUT, M, LIMIT, SEED)"; exit 1 ;;
+  *) echo "usage: $0 R|D|A0.9|A0.7|A0.5|P|P_argmax | judge <setting>   (env: RQ3_OUT, M, LIMIT, SEED, ATTACK)"; exit 1 ;;
 esac

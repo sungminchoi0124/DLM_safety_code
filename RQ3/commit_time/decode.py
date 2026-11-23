@@ -253,6 +253,28 @@ def tail_text(tokenizer, x, prompt_len, args):
     return text
 
 
+INFILL_END = "<endoftext>"   # DiffuGuard/DIJA wrap appended user-turn masks as <startoftext>MASK...<endoftext>
+
+
+def infill_text(tokenizer, x, prompt_ids, prompt_len, mask_id, args=None):
+    """User-turn infill only: from the first prompt mask to the end of the prompt, cut at the DIJA/DiffuGuard
+    end-of-infill marker and at 'assistant\\n'. For DIJA prompts these are the filled blanks (with the prompt
+    text between them); for other attacks the 36 masks the pipeline appends after the user text."""
+    pos = torch.nonzero(prompt_ids[0] == int(mask_id), as_tuple=False)
+    if pos.numel() == 0:
+        return ""
+    start = int(pos.min())
+    text = tokenizer.batch_decode(x[:, start:int(prompt_len)], skip_special_tokens=True)[0]
+    return text.split(INFILL_END)[0].split("assistant\n")[0]
+
+
+def span_json_path(gen_json, span: str) -> Path:
+    """<run>.json -> <run>.<span>.json (same restricted folder as the generation JSON)."""
+    p = Path(gen_json)
+    stem = p.name[:-5] if p.name.endswith(".json") else p.name
+    return p.with_name(f"{stem}.{span}.json")
+
+
 def tail_json_path(gen_json) -> Path:
     """<run>.json -> <run>.tail.json (same restricted folder as the generation JSON)."""
     p = Path(gen_json)

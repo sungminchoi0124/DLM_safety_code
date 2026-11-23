@@ -36,6 +36,11 @@ attacks:
     prompt_file: outputs/data/dija_jbb_100.json   # "refined prompt", which the original judge reads first.
     prompt_file_sha256: c7457f0dce3acca9f9cdfec7c7e0dc865057fd7375ce241bf6e295a5176d6cb7 # Built by `python prepare_data.py dijajbb`
     prompt_set: dijajbb
+  wildjailbreak:        # RQ3 probe training only (team decision 2026-11-23). Paper Table 1: 23.95 -> 21.00 on all 2000.
+    attack_method: zeroshot   # Built by `python prepare_data.py wildjailbreak` (500 of 2000 adversarial_harmful, seed 0)
+    prompt_file: outputs/data/wildjailbreak_adv_harmful_500.json
+    prompt_file_sha256: f2b89efd44cdd9be4c85d414e41577356436bd8123facf11ffcce44b73586c63
+    prompt_set: wjAdvHarm500
 # The DIJA Table 1 column (98.65 -> 51.92) needs a DIJA x AdvBench (520) file that is NOT public;
 # see README "데이터" (pass it with --prompt_file).
 

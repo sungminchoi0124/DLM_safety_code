@@ -8,6 +8,9 @@ printed, never the text.
     python prepare_data.py advbench   # 520 AdvBench behaviors -> outputs/data/advbench_520.json   (PAD input)
     python prepare_data.py jbb        # 300 JBB-Behaviors judge_comparison prompts -> outputs/data/jbb_judge_comparison_300.json
     python prepare_data.py dijajbb    # public DIJA JBB file (100), unchanged, under a name without "refine"
+    python prepare_data.py wildjailbreak  # 500 of the 2000 WildJailbreak eval adversarial_harmful prompts (fixed
+                                      #   random subset, seed 0) -> outputs/data/wildjailbreak_adv_harmful_500.json
+                                      #   (RQ3 probe training only; gated dataset: accept the terms + HF login)
                                       #   -> PAD runs on a DIJA file exactly like the authors' test.sh (judge-question check)
 
 Sources (paper Appendix B.2):
@@ -15,11 +18,14 @@ Sources (paper Appendix B.2):
     Same 520 behaviors in the same order as llm-attacks harmful_behaviors.csv, which walledai/AdvBench mirrors
     (checked 2026-10-28). --source also takes harmful_behaviors.csv or the walledai parquet.
   * JBB-Behaviors: `prompt` column of data/judge-comparison.csv in JailbreakBench/JBB-Behaviors (pinned revision).
+  * WildJailbreak: `adversarial` column of eval/eval.tsv in allenai/wildjailbreak (pinned revision), rows with
+    data_type == adversarial_harmful (2000), subset of 500 = sorted(random.Random(0).sample(range(2000), 500)).
 """
 
 import argparse
 import csv
 import json
+import random
 from pathlib import Path
 
 import yaml
@@ -31,9 +37,14 @@ ADVBENCH_CSV = (PROJECT_DIR.parent / "DIJA" / "third_party" / "DIJA" / "benchmar
 JBB_REPO = "JailbreakBench/JBB-Behaviors"
 JBB_REVISION = "886acc352a31533ffbcf4ef22c744658688086fc"
 JBB_FILE = "data/judge-comparison.csv"
+WJ_REPO = "allenai/wildjailbreak"
+WJ_REVISION = "5ddc12a7894f842b0619b8e1c7ee496b198af009"
+WJ_FILE = "eval/eval.tsv"
+WJ_N, WJ_TOTAL, WJ_SEED = 500, 2000, 0
 
 # dataset -> attack entry in the config (output path + expected hash) and expected row count
-DATASETS = {"advbench": ("pad_advbench", 520), "jbb": ("jbb_behaviors", 300), "dijajbb": ("pad_dijajbb", 100)}
+DATASETS = {"advbench": ("pad_advbench", 520), "jbb": ("jbb_behaviors", 300), "dijajbb": ("pad_dijajbb", 100),
+            "wildjailbreak": ("wildjailbreak", WJ_N)}
 
 
 def read_table(path):
@@ -44,7 +55,7 @@ def read_table(path):
         import pandas as pd
         return pd.read_parquet(path).to_dict("records")
     with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+        return list(csv.DictReader(f, delimiter="	" if path.suffix == ".tsv" else ","))
 
 
 def advbench_items(rows):
@@ -65,6 +76,16 @@ def jbb_items(rows):
             for r in rows]
 
 
+def wildjailbreak_items(rows):
+    harmful = [(i, r) for i, r in enumerate(rows) if r.get("data_type") == "adversarial_harmful"]
+    if len(harmful) != WJ_TOTAL:
+        raise SystemExit(f"WildJailbreak eval: expected {WJ_TOTAL} adversarial_harmful rows, got {len(harmful)}")
+    pick = sorted(random.Random(WJ_SEED).sample(range(WJ_TOTAL), WJ_N))
+    # "vanilla prompt" so pick_two_prompt_fields() reads it (the adversarial prompt itself is the attack input)
+    return [{"source": "WildJailbreak/eval/adversarial_harmful", "wj_row": harmful[k][0],
+             "vanilla prompt": harmful[k][1]["adversarial"]} for k in pick]
+
+
 def default_source(name, config=DEFAULT_CONFIG):
     if name == "dijajbb":
         with open(config, "r", encoding="utf-8") as f:
@@ -74,6 +95,8 @@ def default_source(name, config=DEFAULT_CONFIG):
             raise SystemExit(f"{ADVBENCH_CSV} not found (run `git submodule update --init` at the repo root).")
         return ADVBENCH_CSV
     from huggingface_hub import hf_hub_download
+    if name == "wildjailbreak":
+        return Path(hf_hub_download(WJ_REPO, WJ_FILE, repo_type="dataset", revision=WJ_REVISION))
     return Path(hf_hub_download(JBB_REPO, JBB_FILE, repo_type="dataset", revision=JBB_REVISION))
 
 
@@ -98,7 +121,8 @@ def main(argv=None):
     src = Path(args.source) if args.source else default_source(args.dataset, args.config)
     rows = read_table(src)
     # dijajbb: items unchanged (goal / refined_goal), only the file name and formatting change
-    items = {"advbench": advbench_items, "jbb": jbb_items, "dijajbb": list}[args.dataset](rows)
+    items = {"advbench": advbench_items, "jbb": jbb_items, "dijajbb": list,
+             "wildjailbreak": wildjailbreak_items}[args.dataset](rows)
     out = Path(args.out) if args.out else resolve(attack["prompt_file"])
     digest = write_items(items, out)
 

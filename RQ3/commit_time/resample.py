@@ -28,7 +28,7 @@ from pathlib import Path
 import torch
 
 from ._dg import import_runner, sha12, split_argv
-from .decode import decode, generate_response_like, postprocess, tail_json_path, tail_text
+from .decode import decode, generate_response_like, infill_text, postprocess, span_json_path, tail_json_path, tail_text
 from .run_trace import add_prophet_args, decoder_kwargs
 
 
@@ -85,7 +85,7 @@ def main(argv=None):
 
     out_path = Path(opts.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    records, tails, t_start = [], [], time.perf_counter()
+    records, tails, infills, t_start = [], [], [], time.perf_counter()
     for idx in [int(s) for s in opts.items.split(",") if s.strip()]:
         rg.set_seed(cfg["seed"] + idx)
         p = rg.build_prompts(items[idx], tokenizer, jbl, cfg, is_instruct)
@@ -104,6 +104,8 @@ def main(argv=None):
         records.append({**base, "response": text0, "branch_forward": -1, "branch_seed": None,
                         "is_reference": True, "reproduced_main_run": reproduced, **_exit_fields(res)})
         tails.append(tail_text(tokenizer, res.x, prompt_len, args))
+        p_ids = jbl.get_tokenized_input(p["prompt"], tokenizer, model.device)[0]
+        infills.append(infill_text(tokenizer, res.x, p_ids, prompt_len, args.mask_id, args))
         for s in checkpoints_for(T, fracs):
             for k in range(opts.n_seeds):
                 seed = opts.seed_base + idx * 100_000 + s * 100 + k
@@ -114,9 +116,13 @@ def main(argv=None):
                                 "branch_forward": s, "branch_frac": s / T, "branch_seed": seed,
                                 "is_reference": False, **_exit_fields(r)})
                 tails.append(tail_text(tokenizer, r.x, prompt_len, args))
+                infills.append(infill_text(tokenizer, r.x, p_ids, prompt_len, args.mask_id, args))
         out_path.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
         tail_json_path(out_path).write_text(json.dumps(
             [{**rec, "response": t, "response_span": "assistant_tail"} for rec, t in zip(records, tails)],
+            indent=2, ensure_ascii=False), encoding="utf-8")
+        span_json_path(out_path, "infill").write_text(json.dumps(
+            [{**rec, "response": t, "response_span": "infill"} for rec, t in zip(records, infills)],
             indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"item {idx}: T={T} checkpoints={checkpoints_for(T, fracs)} "
               f"total records={len(records)} elapsed={time.perf_counter() - t_start:.0f}s", flush=True)

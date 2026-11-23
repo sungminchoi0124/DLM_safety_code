@@ -29,7 +29,9 @@ with suffix _infill), because the judged DIJA response is the infilled user turn
 Writes trace_dir/hidden/itemNNN.npz (hidden states, counts, logit statistics, prophet_* arrays; no text),
 trace_dir/trace_meta.jsonl and trace_dir/trace_run.json. Model text stays in the restricted generation folder:
 run_generate.py's JSON (DIJA convention: infilled user turn) and, next to it, <run>.tail.json with the same
-records but `response` = the appended assistant answer only (RAEC convention), for a second eval_asr.py pass.
+records but `response` = the appended assistant answer only (RAEC convention), and <run>.infill.json with
+`response` = the user-turn infill only (filled prompt masks; for non-DIJA attacks the 36 appended masks), so the
+"did it fill harmful content" label exists for every attack.
 """
 from __future__ import annotations
 
@@ -43,7 +45,8 @@ import numpy as np
 
 from ._dg import import_runner, sha12, split_argv
 from .capture import DEFAULT_LAYERS, TraceRecorder, parse_layers, write_meta_line
-from .decode import PROPHET_PHASES, PROPHET_THRESHOLDS, generate_response_like, tail_json_path, tail_text
+from .decode import (PROPHET_PHASES, PROPHET_THRESHOLDS, generate_response_like, infill_text, span_json_path,
+                     tail_json_path, tail_text)
 from .token_sets import raec_token_sets
 
 
@@ -108,7 +111,7 @@ def build_parser():
 
 def install(jbl, opts, trace_dir: Path):
     gfl = sys.modules["utility.generate_function_llada"]
-    state = {"idx": 0, "cues": None, "masses": None, "tails": {}}
+    state = {"idx": 0, "cues": None, "masses": None, "tails": {}, "infills": {}}
     dkw = decoder_kwargs(opts) if hasattr(opts, "prophet_thresholds") else {}
     orig_generate_response = jbl.generate_response
     orig_generate_llada = jbl.generate_llada
@@ -154,12 +157,14 @@ def install(jbl, opts, trace_dir: Path):
             rec.finish(final)
         tail = tail_text(tokenizer, final, ids.shape[1], args)
         state["tails"][idx] = tail                       # memory only; written next to the generation JSON
+        infill = infill_text(tokenizer, final, ids, ids.shape[1], args.mask_id, args)
+        state["infills"][idx] = infill
         saved = rec.save(trace_dir / "hidden" / f"item{idx:03d}.npz", extra=prophet_extra(info))
         write_meta_line(trace_dir / "trace_meta.jsonl", {
             "item_index": idx, "decoder": opts.decoder, "tau": opts.tau, **saved,
             **({"prophet": prophet_meta(info)} if info else {}),
             "seconds": round(time.perf_counter() - t0, 3), "response_sha256_12": sha12(text),
-            "tail_sha256_12": sha12(tail)})
+            "tail_sha256_12": sha12(tail), "infill_sha256_12": sha12(infill)})
         return text
 
     jbl.generate_response = traced
@@ -167,15 +172,20 @@ def install(jbl, opts, trace_dir: Path):
     return jbl
 
 
-def write_tail_json(gen_json, tails: dict) -> Path:
-    """Copy of the generation JSON with `response` replaced by the assistant tail (RAEC convention)."""
+def write_span_json(gen_json, texts: dict, span: str, path=None) -> Path:
+    """Copy of the generation JSON with `response` replaced by one span's text (memory -> restricted folder)."""
     recs = json.loads(Path(gen_json).read_text(encoding="utf-8"))
-    if len(recs) != len(tails):
-        raise SystemExit(f"tail json: {len(recs)} generation records vs {len(tails)} traced items")
-    out = [{**r, "response": tails[i], "response_span": "assistant_tail"} for i, r in enumerate(recs)]
-    path = tail_json_path(gen_json)
+    if len(recs) != len(texts):
+        raise SystemExit(f"{span} json: {len(recs)} generation records vs {len(texts)} traced items")
+    out = [{**r, "response": texts[i], "response_span": span} for i, r in enumerate(recs)]
+    path = Path(path) if path else span_json_path(gen_json, span)
     path.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
+
+
+def write_tail_json(gen_json, tails: dict) -> Path:
+    """Assistant tail only (RAEC convention) -> <run>.tail.json."""
+    return write_span_json(gen_json, tails, "assistant_tail", tail_json_path(gen_json))
 
 
 def main(argv=None):
@@ -204,15 +214,18 @@ def main(argv=None):
 
     rg.import_original = patched_import
     meta = rg.main(rest)
-    tail_path = None
+    tail_path = infill_path = None
     if meta.get("output_json") and "jbl" in holder:
-        tail_path = write_tail_json(meta["output_json"], holder["jbl"]._rq3_trace_state["tails"])
+        st = holder["jbl"]._rq3_trace_state
+        tail_path = write_tail_json(meta["output_json"], st["tails"])
+        infill_path = write_span_json(meta["output_json"], st["infills"], "infill")
     (trace_dir / "trace_run.json").write_text(json.dumps({
         "trace_opts": vars(opts), "run_generate_argv": rest,
         "run_name": meta.get("run_name"), "output_json": meta.get("output_json"), "gen": meta.get("gen"),
         "seed": meta.get("seed"), "model_revision": meta.get("model_revision"),
         "prompt_file_sha256": meta.get("prompt_file_sha256"), "team_repo_commit": meta.get("team_repo_commit"),
         "tail_json": str(tail_path) if tail_path else None,
+        "infill_json": str(infill_path) if infill_path else None,
     }, indent=2), encoding="utf-8")
     print(f"trace -> {trace_dir}")
     return meta

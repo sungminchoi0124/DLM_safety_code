@@ -125,3 +125,22 @@ def test_fit_score_region(model, prompt, tmp_path):
     out = tmp_path / "m.csv"
     analyze.main(["score", "--probe", str(probe), "--run", str(d), str(lab), "--out", str(out)])
     assert len(out.read_text().strip().splitlines()) == 13
+
+
+def test_infill_text_cuts_prompt_masks(tok):
+    # prompt: 1 2 [M] [M] 9 | answer 4 5 ; the fake tokenizer decodes ids as numbers
+    prompt_ids = torch.tensor([[1, 2, MASK, MASK, 9]])
+    x = torch.tensor([[1, 2, 7, 8, 9, 4, 5]])
+    args = types.SimpleNamespace(attack_method="DIJA")
+    assert dec.infill_text(tok, x, prompt_ids, 5, MASK, args) == "7 8 9"
+    assert dec.infill_text(tok, x, torch.tensor([[1, 2, 3, 3, 9]]), 5, MASK, args) == ""
+    assert dec.span_json_path("/a/run_x.json", "infill").name == "run_x.infill.json"
+
+
+def test_write_span_json(tmp_path):
+    from commit_time.run_trace import write_span_json
+    gen = tmp_path / "run.json"
+    gen.write_text(json.dumps([{"vanilla prompt": "v0", "response": "a"}]))
+    out = write_span_json(gen, {0: "b"}, "infill")
+    recs = json.loads(out.read_text())
+    assert out.name == "run.infill.json" and recs[0]["response"] == "b" and recs[0]["response_span"] == "infill"
