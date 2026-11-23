@@ -115,6 +115,8 @@ def test_gate_row_needs_thresholds():
         common.gate_config(_cfg(a=None, b=None))
     g = common.gate_config(_cfg(a=0.2, b=0.3))
     assert (g.a, g.b, g.K, g.H, g.windows) == (0.2, 0.3, 16, 8, ("response",))
+    g = common.gate_config(common.load_config())
+    assert (g.a, g.b) == (0.005, 0.0)
 
 
 def test_dry_runs(capsys):
