@@ -30,6 +30,11 @@ class Traj:
     H: np.ndarray      # [T, n_layers, d] float16
     layer_names: list
     main_end: int      # forwards before repair (T if no repair)
+    group: object = None   # CV group (prompt identity across runs); defaults to item
+
+
+def _gid(t):
+    return t.item if t.group is None else t.group
 
 
 def _rows(trajs, li, mode):
@@ -37,10 +42,10 @@ def _rows(trajs, li, mode):
     for t in trajs:
         H = t.H[:, li, :].astype(np.float32)
         if mode == "traj_mean":
-            X.append(H.mean(0, keepdims=True)); y.append([t.y]); w.append([1.0]); g.append([t.item])
+            X.append(H.mean(0, keepdims=True)); y.append([t.y]); w.append([1.0]); g.append([_gid(t)])
         else:
             T = H.shape[0]
-            X.append(H); y.append([t.y] * T); w.append([1.0 / T] * T); g.append([t.item] * T)
+            X.append(H); y.append([t.y] * T); w.append([1.0 / T] * T); g.append([_gid(t)] * T)
     return (np.concatenate(X), np.concatenate(y), np.concatenate(w), np.concatenate(g))
 
 
@@ -56,8 +61,10 @@ class Probe:
     mode: str
     C: float
 
-    def margins(self, H: np.ndarray) -> np.ndarray:
-        z = (H[:, self.layer_index, :].astype(np.float32) - self.mean) / self.std
+    def margins(self, H: np.ndarray, layer_names=None) -> np.ndarray:
+        """layer_names: the trace's layer list; picks the probe's layer by name (traces may store other layers)."""
+        li = self.layer_index if layer_names is None else list(layer_names).index(self.layer)
+        z = (H[:, li, :].astype(np.float32) - self.mean) / self.std
         return z @ self.w + self.b
 
     def save(self, path: Path, report: dict):
@@ -111,7 +118,7 @@ def fit_probe(trajs: list, *, mode="traj_mean", Cs=(0.01, 0.1, 1.0), n_folds=5, 
     if len({t.y for t in trajs}) < 2:
         raise SystemExit("probe needs both labels in the training trajectories")
     layer_names = trajs[0].layer_names
-    groups = np.array([t.item for t in trajs])
+    groups = np.array([str(_gid(t)) for t in trajs])
     n_folds = min(n_folds, len(set(groups)))
     gkf = GroupKFold(n_splits=n_folds)
     grid = []

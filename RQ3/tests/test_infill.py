@@ -144,3 +144,39 @@ def test_write_span_json(tmp_path):
     out = write_span_json(gen, {0: "b"}, "infill")
     recs = json.loads(out.read_text())
     assert out.name == "run.infill.json" and recs[0]["response"] == "b" and recs[0]["response_span"] == "infill"
+
+
+def _mk_run(model, prompt, root, name, layers, n=10):
+    d = root / name
+    labels = []
+    for i in range(n):
+        rec = TraceRecorder(model, mask_id=MASK, prompt_len=prompt.shape[1], layers=layers, lead_k=LEAD)
+        torch.manual_seed(100 + i)
+        with rec:
+            r = decode(model, prompt, None, gen_length=GEN, steps=STEPS, temperature=1.0, mask_id=MASK, rule="quota")
+            rec.finish(r.x)
+        rec.save(d / "hidden" / f"item{i:03d}.npz")
+        labels.append({"item_index": i, "label": "harmful" if i % 2 else "refusal"})
+    from commit_time import analyze
+    lab = root / f"{name}.csv"
+    analyze.write_csv(lab, labels)
+    return d, lab
+
+
+def test_fit_mixed_regions_common_layers_and_groups(model, prompt, tmp_path):
+    from commit_time import analyze
+    dija, dija_lab = _mk_run(model, prompt, tmp_path, "R_s0", (FINAL,))
+    other, other_lab = _mk_run(model, prompt, tmp_path, "pad_advbench__R", (1, FINAL))
+    assert analyze.prompt_group("R_s0", 3) == analyze.prompt_group("D_s1000", 3) == "dija_jbb:3"
+    assert analyze.prompt_group("pad_advbench__R", 3) == "pad_advbench:3"
+    probe = tmp_path / "probe.npz"
+    analyze.main(["fit", "--run_region", str(dija), str(dija_lab), "infill",
+                  "--run_region", str(other), str(other_lab), "tail", "--out", str(probe), "--folds", "3"])
+    rep = json.loads(probe.with_suffix(".report.json").read_text())
+    assert rep["region"] == "mixed" and rep["n_traj"] == 20 and len(rep["runs"]) == 2
+    with pytest.raises(SystemExit):           # mixed probe needs an explicit region when scoring
+        analyze.main(["score", "--probe", str(probe), "--run", str(dija), str(dija_lab), "--out", str(tmp_path / "x.csv")])
+    out = tmp_path / "m.csv"
+    analyze.main(["score", "--probe", str(probe), "--run", str(other), str(other_lab), "--out", str(out),
+                  "--region", "infill"])      # 2-layer trace scored by name with a probe fit on the common layer
+    assert len(out.read_text().strip().splitlines()) == 11

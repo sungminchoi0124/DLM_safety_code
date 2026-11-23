@@ -7,7 +7,11 @@
 
 --region picks the pooled hidden state the probe reads: all = every tracked mask (default, older traces),
 infill = prompt masks only (DIJA infill), tail = response positions only. fit stores it in probe.report.json
-and score uses the same region.
+and score uses the same region (or --region).
+fit --run_region TRACE_DIR LABELS_CSV REGION adds a run with its own region, e.g. DIJA traces on infill and
+other attacks on tail ("where the judged content is written"); only layers common to all runs are used, and
+CV groups are prompt identities (attack prefix of the run name + item index), so seeds of one prompt never
+straddle folds.
     python -m commit_time.analyze behavior --resample_labels rs_labels.csv --metrics metrics.csv --out behavior.csv
     python -m commit_time.analyze flips   --ref metrics_ref.csv --acc metrics_acc.csv --out flips.csv
     python -m commit_time.analyze gaps    --run TRACE_DIR [--run ...] --out gaps.csv
@@ -78,6 +82,23 @@ def _labels_map(path):
 REGION_KEY = {"all": "hidden", "infill": "hidden_infill", "tail": "hidden_tail"}
 
 
+def prompt_group(run_name: str, idx: int) -> str:
+    """Prompt identity: runs of one attack share prompts (R_s0, D_s1000 -> dija_jbb; pad_advbench__R -> pad_advbench)."""
+    return f"{run_name.split('__')[0] if '__' in run_name else 'dija_jbb'}:{idx}"
+
+
+def common_layers(trajs):
+    """Restrict every trajectory to the layers all of them have (in the first one's order)."""
+    names = [n for n in trajs[0].layer_names if all(n in t.layer_names for t in trajs)]
+    if not names:
+        raise SystemExit("runs share no hidden-state layer")
+    for t in trajs:
+        if t.layer_names != names:
+            t.H = t.H[:, [t.layer_names.index(n) for n in names], :]
+            t.layer_names = list(names)
+    return trajs
+
+
 def load_trajs(run_dir, labels_csv, region="all"):
     run_dir = Path(run_dir)
     key = REGION_KEY[region]
@@ -94,7 +115,7 @@ def load_trajs(run_dir, labels_csv, region="all"):
             continue                                    # no prompt masks: nothing to pool
         rem = np.nonzero(tr["n_remask"] > 0)[0]
         main_end = int(rem[0] + 1) if rem.size else tr["hidden"].shape[0]
-        out.append((Traj(run=run_dir.name, item=idx, y=int(lab[idx] == "harmful"), H=tr[key],
+        out.append((Traj(run=run_dir.name, item=idx, y=int(lab[idx] == "harmful"), H=tr[key], group=prompt_group(run_dir.name, idx),
                          layer_names=[str(x) for x in tr["layer_names"]], main_end=main_end), tr))
     if not out:
         raise SystemExit(f"no labelled traces in {run_dir}")
@@ -103,11 +124,17 @@ def load_trajs(run_dir, labels_csv, region="all"):
 
 # --------------------------------------------------------------------------- fit / score
 def cmd_fit(a):
+    runs = [(d, l, a.region) for d, l in (a.run or [])] + [tuple(r) for r in (a.run_region or [])]
+    if not runs:
+        raise SystemExit("give --run and/or --run_region")
     trajs = []
-    for run_dir, lab in a.run:
-        trajs += [t for t, _ in load_trajs(run_dir, lab, a.region)]
+    for run_dir, lab, region in runs:
+        trajs += [t for t, _ in load_trajs(run_dir, lab, region)]
+    trajs = common_layers(trajs)
     probe, report = fit_probe(trajs, mode=a.mode, n_folds=a.folds)
-    report["region"] = a.region
+    regions = sorted({r for _, _, r in runs})
+    report["region"] = regions[0] if len(regions) == 1 else "mixed"
+    report["runs"] = [{"trace_dir": str(d), "labels": str(l), "region": r} for d, l, r in runs]
     probe.save(Path(a.out), report)
     sel = report["selected"]
     print(f"probe layer={probe.layer} C={probe.C} tau={probe.tau:.3f} "
@@ -118,10 +145,14 @@ def cmd_score(a):
     probe = Probe.load(Path(a.probe))
     rep = Path(a.probe).with_suffix(".report.json")
     region = json.loads(rep.read_text(encoding="utf-8")).get("region", "all") if rep.exists() else "all"
+    if a.region:
+        region = a.region
+    if region == "mixed":
+        raise SystemExit("probe was fit on mixed regions; pass --region for the runs being scored")
     rows, margins = [], {}
     for run_dir, lab in a.run:
         for t, tr in load_trajs(run_dir, lab, region):
-            d = probe.margins(t.H)
+            d = probe.margins(t.H, t.layer_names)
             margins[f"{t.run}/{t.item}"] = d.astype(np.float32)
             rows.append({"run": t.run, "item_index": t.item, **item_metrics(d, t.y, probe.tau, tr)})
     write_csv(a.out, rows)
@@ -264,7 +295,8 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("labels"); s.add_argument("eval_json"); s.add_argument("--out", required=True)
     s = sub.add_parser("fit")
-    s.add_argument("--run", nargs=2, action="append", required=True, metavar=("TRACE_DIR", "LABELS_CSV"))
+    s.add_argument("--run", nargs=2, action="append", metavar=("TRACE_DIR", "LABELS_CSV"))
+    s.add_argument("--run_region", nargs=3, action="append", metavar=("TRACE_DIR", "LABELS_CSV", "REGION"))
     s.add_argument("--out", required=True); s.add_argument("--mode", choices=["traj_mean", "all_steps"],
                                                            default="traj_mean")
     s.add_argument("--folds", type=int, default=5)
@@ -272,6 +304,7 @@ def main(argv=None):
     s = sub.add_parser("score"); s.add_argument("--probe", required=True)
     s.add_argument("--run", nargs=2, action="append", required=True, metavar=("TRACE_DIR", "LABELS_CSV"))
     s.add_argument("--out", required=True)
+    s.add_argument("--region", choices=sorted(REGION_KEY), help="override the region stored with the probe")
     s = sub.add_parser("behavior"); s.add_argument("--resample_labels", required=True)
     s.add_argument("--metrics", required=True); s.add_argument("--out", required=True)
     s.add_argument("--level", type=float, default=0.9)
