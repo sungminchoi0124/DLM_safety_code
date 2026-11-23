@@ -1,0 +1,21 @@
+# Safety gate settings (SafeGate/safegate/decoder.py).
+# a and b stay null until they are chosen from the DEV traces (analyze_dev.py on data/dev_*30.txt).
+# run_gate_asr.py / run_gate_gsm8k.py refuse --row gate while they are null. Never tune on JBB 100 or GSM8K 250.
+gate:
+  token_set: short      # short (below) | raec (RAEC cue sets, recorded in the trace for comparison)
+  a: null               # refusal mass threshold   (m_ref >= a)
+  b: null               # compliance mass threshold (m_cmp >= b)
+  K: 16                 # first K generated positions in the window
+  H: 8                  # at most H held steps per item
+  windows: [response]   # response and/or infill (DIJA prompt masks)
+  K_infill: 16          # first K_infill prompt masks when infill is in windows (null = all)
+
+tokens:                 # short sets; only one-token variants (phrase, " " + phrase) are used
+  refusal: [Sorry, "I'm", cannot, "can't", unable]
+  compliance: [Sure, Here, Certainly, Step]
+
+trace:
+  resp_k: 16            # generated positions recorded per step (prompt masks: all of them)
+
+accel:
+  threshold: 0.9        # RQ2 column A

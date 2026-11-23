@@ -1,0 +1,24 @@
+{
+  "seed": 0,
+  "n": 30,
+  "jbb_similarity_cutoff": 0.6,
+  "dev_harm30": {
+    "source": "DIJA/third_party/DIJA/run_harmbench/refine_prompt/harmbench_behaviors_text_all_refined_Qwen.json",
+    "source_sha256": "887651843ea08652e169b8f487397efb51a61dbac28ed174d78fa602ed44cac3",
+    "pool_after_filters": 166,
+    "dropped_as_jbb_like": 34,
+    "semantic_categories": {
+      "chemical_biological": 4,
+      "illegal": 11,
+      "misinformation_disinformation": 5,
+      "harassment_bullying": 3,
+      "cybercrime_intrusion": 6,
+      "harmful": 1
+    }
+  },
+  "dev_gsm30": {
+    "source": "DiffuGuard/data/gsm8k_5shot_lmeval.json",
+    "excluded_test_ids": 250,
+    "pool": 1069
+  }
+}
