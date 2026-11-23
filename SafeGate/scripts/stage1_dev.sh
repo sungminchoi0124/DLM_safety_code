@@ -16,7 +16,14 @@ A=sg-asr-dev_harm30-A-none-s0
 G=sg-gsm8k-dev-A-none-s0
 common=(--row none --trace --model_path "$M" --model_class "$MC")
 
-echo "== [1/6] tests (CPU)";            "$PY" -m pytest -q -p no:cacheprovider SafeGate/tests | tail -1
+echo "== [1/6] tests (CPU)"
+if "$PY" -c "import pytest" 2>/dev/null; then
+  "$PY" -m pytest -q -p no:cacheprovider SafeGate/tests > /tmp/sg_pytest.log 2>&1 \
+    || { echo "TESTS FAILED:"; grep -E "^(FAILED|ERROR|E )" /tmp/sg_pytest.log | head -20; tail -3 /tmp/sg_pytest.log; exit 1; }
+  tail -1 /tmp/sg_pytest.log
+else
+  echo "pytest not installed in this venv: tests skipped (they pass on the CPU machine)"
+fi
 echo "== [2/6] smoke: 2 harmful dev items"
 "$PY" SafeGate/run_gate_asr.py --set dev_harm30 --limit 2 --tag smoke "${common[@]}" | tail -1
 echo "== [3/6] harmful dev, 30 items";  "$PY" SafeGate/run_gate_asr.py --set dev_harm30 "${common[@]}"
