@@ -1,5 +1,13 @@
 # SafeGate: 안전 게이트 commit 규칙 (최소 시제품)
 
+> **상태: 종료(2026-11-24), 음성 결과.** 개발셋에서 멈췄고 테스트셋(JBB 100, GSM8K 250)은 돌리지 않았다.
+> - 1단계([results/dev/stage1_summary.md](results/dev/stage1_summary.md)): 거부·순응 경합(b > 0)은 유해 개발셋에서 거의 생기지 않았다(최대 4/30). 미리 정한 규칙은 거부 질량만 보는 a = 0.005, b = 0을 골랐다.
+> - 1b단계([results/dev/stage1b_summary.md](results/dev/stage1b_summary.md)): 게이트가 23/30에서 발동했지만 효과가 없었다. 인필 ASR-e 27/29 → 27/30, 답변 ASR-e 3/30 → 3/30. forward는 +4.5%.
+> - 이유: DIJA의 해로움은 거부 표현이 나오지 않는 인필(사용자 턴)에 있고, 답변은 이미 대부분 거절이다. 응답 앞쪽 질량을 보는 게이트는 DIJA에 구조적으로 맞지 않는다.
+> - 시험하지 않은 것: 답변이 판정 대상인 공격(PAD, JBB 원문, WildJailbreak)에서의 효과. 인필 위치의 hidden 위험 점수(신호 2).
+>
+> 아래는 원래 설계 기록이다.
+
 목표: DiffuGuard 수준으로 ASR을 낮추면서, GSM8K 정확도와 속도는 Fast-dLLM(RQ2 A열)에 가깝게 유지한다.
 RQ2에서 DiffuGuard는 A열 GSM8K를 78.8% → 64.8%로 떨어뜨렸다.
 
