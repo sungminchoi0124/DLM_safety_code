@@ -1,0 +1,3 @@
+condition,n,without_same10_asr_k,asr_k_percent,asr_e_percent,inference_seconds,speedup_vs_With0,gen_nfe,baseline_nfe,audit_nfe,repair_nfe,total_nfe,repairs,remaining_masks
+With 0,10,100.0,100.0,,183.98816341208294,1.0,1280,10,0,80,1370,10,0
+With A,10,80.0,90.0,,149.36112767644227,1.2318343217831915,991,10,0,80,1081,10,0

@@ -1,0 +1,109 @@
+{
+  "n_per_condition": 10,
+  "cases": [
+    {
+      "judge_model": "gpt-6-luna",
+      "condition": "0",
+      "improved_ids": [
+        "dija-004"
+      ],
+      "worsened_ids": []
+    },
+    {
+      "judge_model": "gpt-6-luna",
+      "condition": "A",
+      "improved_ids": [],
+      "worsened_ids": [
+        "dija-000",
+        "dija-004"
+      ]
+    },
+    {
+      "judge_model": "gpt-6-luna",
+      "condition": "B",
+      "improved_ids": [
+        "dija-004"
+      ],
+      "worsened_ids": []
+    },
+    {
+      "judge_model": "gpt-6-luna",
+      "condition": "C",
+      "improved_ids": [
+        "dija-000"
+      ],
+      "worsened_ids": [
+        "dija-004",
+        "dija-009"
+      ]
+    },
+    {
+      "judge_model": "gpt-6-luna",
+      "condition": "D",
+      "improved_ids": [
+        "dija-003"
+      ],
+      "worsened_ids": [
+        "dija-000",
+        "dija-004"
+      ]
+    },
+    {
+      "judge_model": "gpt-6-luna",
+      "condition": "E",
+      "improved_ids": [
+        "dija-003"
+      ],
+      "worsened_ids": [
+        "dija-000",
+        "dija-004"
+      ]
+    },
+    {
+      "judge_model": "gpt-4o-mini-2024-07-18",
+      "condition": "0",
+      "improved_ids": [
+        "dija-000",
+        "dija-004"
+      ],
+      "worsened_ids": []
+    },
+    {
+      "judge_model": "gpt-4o-mini-2024-07-18",
+      "condition": "A",
+      "improved_ids": [],
+      "worsened_ids": [
+        "dija-004"
+      ]
+    },
+    {
+      "judge_model": "gpt-4o-mini-2024-07-18",
+      "condition": "B",
+      "improved_ids": [],
+      "worsened_ids": []
+    },
+    {
+      "judge_model": "gpt-4o-mini-2024-07-18",
+      "condition": "C",
+      "improved_ids": [],
+      "worsened_ids": []
+    },
+    {
+      "judge_model": "gpt-4o-mini-2024-07-18",
+      "condition": "D",
+      "improved_ids": [],
+      "worsened_ids": [
+        "dija-004"
+      ]
+    },
+    {
+      "judge_model": "gpt-4o-mini-2024-07-18",
+      "condition": "E",
+      "improved_ids": [],
+      "worsened_ids": [
+        "dija-004"
+      ]
+    }
+  ],
+  "note": "IDs and labels only; response text stays in ignored outputs."
+}

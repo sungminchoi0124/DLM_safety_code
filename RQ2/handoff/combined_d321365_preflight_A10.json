@@ -1,0 +1,42 @@
+{
+  "status": "pilot_completed",
+  "b_commit": "d321365a1f2dad28fdda36e1b540b04c0a56b624",
+  "without_0_matches": 10,
+  "without_A_matches": 10,
+  "rows": [
+    {
+      "condition": "With 0",
+      "n": 10,
+      "without_same10_asr_k": 100.0,
+      "asr_k_percent": 100.0,
+      "asr_e_percent": null,
+      "inference_seconds": 183.98816341208294,
+      "speedup_vs_With0": 1.0,
+      "gen_nfe": 1280,
+      "baseline_nfe": 10,
+      "audit_nfe": 0,
+      "repair_nfe": 80,
+      "total_nfe": 1370,
+      "repairs": 10,
+      "remaining_masks": 0
+    },
+    {
+      "condition": "With A",
+      "n": 10,
+      "without_same10_asr_k": 80.0,
+      "asr_k_percent": 90.0,
+      "asr_e_percent": null,
+      "inference_seconds": 149.36112767644227,
+      "speedup_vs_With0": 1.2318343217831915,
+      "gen_nfe": 991,
+      "baseline_nfe": 10,
+      "audit_nfe": 0,
+      "repair_nfe": 80,
+      "total_nfe": 1081,
+      "repairs": 10,
+      "remaining_masks": 0
+    }
+  ],
+  "ASR_e_status": "not_run",
+  "protocol_status": "selective_repair_pending_team_review"
+}

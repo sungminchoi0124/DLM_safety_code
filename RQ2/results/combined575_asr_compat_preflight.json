@@ -1,0 +1,101 @@
+{
+  "status": "passed_for_Without_0_fixed_pilot10_only",
+  "b_commit": "57548658d6bb6ce5f32144edcadc97cce8773125",
+  "c_commit": "9d39fa2758a41d9077966505bec5cf8dff26ce41",
+  "torch": "2.3.1+cu121",
+  "transformers": "4.46.2",
+  "loader": "C pinned Fast-dLLM; same model instance per comparison",
+  "ablation_dija000": [
+    {
+      "variant": "default",
+      "item_id": "dija-000",
+      "full_tokens_equal": false,
+      "different_positions": 72,
+      "first_different_position": [
+        0,
+        43
+      ],
+      "response_equal": false,
+      "c_gen_nfe": 128,
+      "b_gen_nfe": 128,
+      "remaining_masks": 0,
+      "c_saved_response_reproduced": true
+    },
+    {
+      "variant": "precision_only",
+      "item_id": "dija-000",
+      "full_tokens_equal": false,
+      "different_positions": 72,
+      "first_different_position": [
+        0,
+        43
+      ],
+      "response_equal": false,
+      "c_gen_nfe": 128,
+      "b_gen_nfe": 128,
+      "remaining_masks": 0,
+      "c_saved_response_reproduced": true
+    },
+    {
+      "variant": "rng_only",
+      "item_id": "dija-000",
+      "full_tokens_equal": false,
+      "different_positions": 62,
+      "first_different_position": [
+        0,
+        45
+      ],
+      "response_equal": false,
+      "c_gen_nfe": 128,
+      "b_gen_nfe": 128,
+      "remaining_masks": 0,
+      "c_saved_response_reproduced": true
+    },
+    {
+      "variant": "both",
+      "item_id": "dija-000",
+      "full_tokens_equal": true,
+      "different_positions": 0,
+      "first_different_position": null,
+      "response_equal": true,
+      "c_gen_nfe": 128,
+      "b_gen_nfe": 128,
+      "remaining_masks": 0,
+      "c_saved_response_reproduced": true
+    }
+  ],
+  "pilot_n": 10,
+  "full_token_matches": 10,
+  "response_matches": 10,
+  "item_ids": [
+    "dija-000",
+    "dija-001",
+    "dija-002",
+    "dija-003",
+    "dija-004",
+    "dija-005",
+    "dija-006",
+    "dija-007",
+    "dija-008",
+    "dija-009"
+  ],
+  "nfe_per_item": 128,
+  "remaining_masks": 0,
+  "input_token_matches": 100,
+  "cpu_regression_checks_passed": 24,
+  "proposed_settings": {
+    "fixed_rng": "fastdllm",
+    "conf_precision": "float64"
+  },
+  "original_B_files_modified": false,
+  "existing_Without_raw_and_Luna_hashes_preserved": true,
+  "review_required": [
+    "B review and integrate optional fixed_rng compatibility patch",
+    "Agree float64 confidence for ASR Without/With fixed mode",
+    "Team confirm selective first-block audit/repair policy"
+  ],
+  "With_pilot_executed": false,
+  "prepared_runner": "RQ2/run_asr_with0_pilot.py",
+  "patch": "RQ2/handoff/combined575_asr_compat.patch",
+  "finished_utc": "2026-11-14T08:00:14.735870+00:00"
+}

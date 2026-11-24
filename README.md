@@ -27,7 +27,7 @@ DLM_safety_code/
     └── outputs/              # (git 제외) 생성 결과. 유해 텍스트 포함 가능
 ```
 
-- 명령은 각 논문 폴더 안에서 실행한다 (`cd DIJA`). 경로는 그 폴더 기준이다.
+- 논문 재현 명령은 각 논문 폴더 안에서 실행한다 (`cd DIJA`). RQ1/RQ2의 모듈 명령은 각 README에 따라 레포 루트에서 실행한다.
 - 원본 코드는 고치지 않는다. 꼭 바꿔야 하면 `<논문>/patches/`에 diff와 이유를 남긴다.
 - 유해 출력은 `outputs/`에만 저장한다. git·메신저·OneDrive 등에 올리지 않는다.
 - API 키는 `.env`에만 둔다. 코드나 명령 기록에 남기지 않는다.
@@ -37,6 +37,7 @@ DLM_safety_code/
 | 폴더 | 연구 질문 | 상태 |
 |---|---|---|
 | [`RQ1/`](RQ1/README.md) | 디퓨전 스텝 수를 줄이면 DiffuGuard를 켠/끈 모델의 ASR과 GSM8K 성능이 어떻게 변하는가 | **방어 없음(vanilla) 스텝 감소 실험 완료** (DIJA ASR, GSM8K 250 정확도, 시드 0). DiffuGuard 켬 조건 진행 중. `run.py` 본실행 파이프라인은 뼈대 상태. 파일 형식은 [`RQ1/docs/interfaces.md`](RQ1/docs/interfaces.md) |
+| [`RQ2/`](RQ2/README.md) | Fast-dLLM 가속과 DiffuGuard를 결합했을 때 ASR과 방어 비용을 포함한 추론 시간은 어떻게 변하는가 | **ASR Without/With 0·A~E 각 100문항 생성 완료**. With ASR-e는 1,196/1,200건 판정, 미판정 4건. GSM8K는 별도 담당 |
 
 **RQ1 vanilla 결과 요약** (자세한 표: [`RQ1/README.md`](RQ1/README.md#결과))
 
@@ -46,6 +47,23 @@ DLM_safety_code/
 | GSM8K 정확도 (%) | 77.6 | 77.2 | 66.4 | 29.2 |
 
 스텝을 1/8로 줄이면 GSM8K 정확도는 크게 무너지지만, 방어 없는 모델의 ASR-e는 11%p만 내려갑니다.
+
+### RQ2 ASR 결과와 재현
+
+동일한 DIJA × JBB 100개 ID를 Without/With 각 6조건에 적용했다. 생성은 총 1,200개 모두 완료됐고,
+잔여 마스크는 0이었다. Without은 Luna·GPT-4o mini 판정 1,200/1,200건을 완료했다.
+With는 Luna 599/600건, Mini 597/600건을 판정했다. 미판정 4건은 `dija-018`의 API 차단 및 동일 입력 재전송 보류이며,
+미판정을 SAFE/UNSAFE로 채우지 않았다. 공통 99개 ID의 대응 비교는 보조 분석으로 제공한다.
+
+With는 고정 공격 문장을 보호하고 첫 블록의 원래 마스크 위치·생성 첫 32칸만 감사·수리하는 RQ2 결합 설정이다.
+원본 DiffuGuard와 수리 범위가 다르므로, 원본 방어와 동일한 방법으로 표현하거나 방어 효과 유지를 단정하지 않는다.
+
+- [상세 설정·실행 방법·결과 및 한계](RQ2/README.md)
+- [Without/With 12조건 최종 요약](RQ2/results/rq2_asr_summary.csv)
+- [With ASR-e 판정 분모와 미판정 수](RQ2/results/with_d321365_seed0_n100_asr_e.csv)
+- [공통 판정 99개 ID의 Without/With 비교](RQ2/results/with_d321365_seed0_n100_asr_e_common_scored_ids.csv)
+
+Git에는 코드·설정·테스트·숫자 요약만 공유한다. 응답 원문·판정 reasoning·키·모델 가중치는 포함하지 않는다.
 
 ## 브랜치 규칙
 

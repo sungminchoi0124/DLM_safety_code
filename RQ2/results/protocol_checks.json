@@ -1,0 +1,33 @@
+{
+  "checked_kst": "2026-11-12T19:53:47.571521+09:00",
+  "input": {
+    "raw_sha256": "534d0df5d766845e9877c9bf9157d8381e8107c35aa077d6b7093aaf66eb5c95",
+    "matches_user_confirmed_notion_sha256": true,
+    "n_items": 100,
+    "id_order": "dija-000 through dija-099 mapped to original source indices 0 through 99"
+  },
+  "seed": {
+    "status": "supported_by_RQ1_code_and_base_seed_records",
+    "legacy_commit": "f06ae214db8238f2bd680b4b774d6eae49b4e6e3",
+    "file": "DiffuGuard/run_generate.py",
+    "call_line": 430,
+    "metadata_line": 596,
+    "policy": "Reset Python random, NumPy, torch and CUDA before each item using base seed + item index. Base seed 0 means item seeds 0..99 in the fixed full input order.",
+    "legacy_run_tree_dirty": true,
+    "limitation": "Archived RQ1 runs report dirty trees; commit inspection does not prove the exact uncommitted runtime source. RQ2 pilot raw explicitly records item seeds 0..9."
+  },
+  "A_iteration_bound": {
+    "status": "local_pilot_design_not_team_confirmed",
+    "upstream_commit": "a9b81e4caa240c8cad4f7dc1889ff4852a0fca5b",
+    "upstream_file": "/root/Fast-dLLM/v1/llada/generate.py",
+    "upstream_loop_line": 114,
+    "upstream_exit_line": 125,
+    "upstream_policy": "Threshold path uses while True and exits when current generated block has no masks; steps=128 is not a hard 32-call block cap. Original generated-block termination alone does not guarantee prompt masks are filled.",
+    "local_file": "RQ2/decoding.py",
+    "local_bound_line": 27,
+    "local_policy": "First block jointly fills P prompt masks plus 32 generated masks, with cap P+32. Later three blocks each have cap 32. Early exit after active region is filled. Per-item worst-case bound is P+128. At least one mask is filled per successful call; mask-token proposals cause failure.",
+    "basis": "Finite completion bound derived from upstream highest-confidence-token fallback, not a value confirmed in team documentation.",
+    "pilot_example_total_nfe": 197
+  },
+  "full_runs_started": false
+}

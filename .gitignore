@@ -229,6 +229,9 @@ __marimo__/
 
 # secrets
 .env
+.env.*
+!.env.example
+!.env.sample
 
 # model weights / caches
 hf_models/
