@@ -136,7 +136,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
              defense=False, alpha_rule=None, alpha0=0.3,
              sp_threshold=0.1, refinement_steps=8, remask_ratio=0.9, suppression_value=1e6,
              baseline_hidden=None, cue_ids=None, attention_mask=None, cache=None,
-             prompt_masks="error", cache_start_block=0):
+             prompt_masks="error", cache_start_block=0, fixed_rule="diffuguard"):
     """Decode gen_length tokens after `prompt` ([1, P] token ids) block by block.
 
     mode="fixed"    : steps // num_blocks forwards per block, a fixed number of tokens committed per step
@@ -179,6 +179,12 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
                           (the original's span would include the prompt text between masks; RQ2 keeps the attack
                           prompt as given, like the Without runs).
                       Without prompt masks "first_block" changes nothing.
+    fixed_rule      : fixed-mode step rule. "diffuguard" (default; GSM8K runs, RQ1 / DiffuGuard original): softmax in
+                      the logits dtype, R = torch.rand drawn every step even with the defense off, top-k by
+                      torch.topk. "fastdllm" (RQ2 ASR, = C's Without 0, Fast-dLLM generate() with fixed steps):
+                      softmax in float64, R drawn only when the defense uses it, the k positions taken from a
+                      descending torch.sort of the confidence (Fast-dLLM get_transfer_index). Threshold mode is
+                      unaffected (it already follows Fast-dLLM).
     cache_start_block: first block that uses the cache (D/E). 0 = Fast-dLLM / GSM8K. The ASR layout uses 1: block 0
                       (with the prompt masks) runs full forwards every step, the cache starts at block 1. Prompt
                       masks with a cache need cache_start_block >= 1 (a prefix cache cannot hold positions that
@@ -202,7 +208,12 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
     if mode == "threshold" and alpha_rule == "original":
         # the step-based schedule needs a step count per block, which threshold mode does not have
         raise ValueError("mode='threshold' needs alpha_rule='progress'")
-    conf_precision = conf_precision or ("model" if mode == "fixed" else "float64")
+    if fixed_rule not in ("diffuguard", "fastdllm"):
+        raise ValueError(f"fixed_rule must be 'diffuguard' or 'fastdllm', got {fixed_rule!r}")
+    if fixed_rule == "fastdllm" and mode != "fixed":
+        raise ValueError("fixed_rule='fastdllm' applies to mode='fixed' only")
+    fd_fixed = mode == "fixed" and fixed_rule == "fastdllm"
+    conf_precision = conf_precision or ("model" if mode == "fixed" and not fd_fixed else "float64")
     if conf_precision not in ("model", "float64"):
         raise ValueError(f"conf_precision must be 'model' or 'float64', got {conf_precision!r}")
     if prompt.shape[0] != 1:
@@ -246,7 +257,7 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
     fixed = mode == "fixed"
     steps_per_block = max(int(steps) // num_blocks, 1) if fixed else 0
     use_hidden = defense and baseline_hidden is not None
-    draw_R = fixed or defense
+    draw_R = (fixed and not fd_fixed) or defense
     stats = Stats(steps_per_block=steps_per_block)
 
     prompt_mask_pos = (x[0, :P] == mask_id)
@@ -333,7 +344,12 @@ def generate(model, prompt, *, gen_length, block_length, steps=None, temperature
                 k = max(int((in_block & (model_confidence >= threshold)).sum()), 1)
             if k > 0:
                 transfer_index = torch.zeros_like(xw, dtype=torch.bool)
-                transfer_index[0, torch.topk(confidence[0], k=k).indices] = True
+                if fd_fixed:   # Fast-dLLM get_transfer_index: first k of a descending sort
+                    order = torch.sort(confidence, dim=1, descending=True).indices[0]
+                    transfer_index[0, order[:k]] = True
+                    transfer_index &= mask_index
+                else:
+                    transfer_index[0, torch.topk(confidence[0], k=k).indices] = True
                 xw[transfer_index] = x0[transfer_index]
                 committed += k
             i += 1

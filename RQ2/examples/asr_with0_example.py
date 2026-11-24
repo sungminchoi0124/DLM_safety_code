@@ -6,7 +6,7 @@ What it shows (for the teammate who runs the Without ASR cells and wants to plug
      baseline hidden state from the original request ("vanilla prompt"), both with the original DiffuGuard code
      (models/jailbreakbench_llada.py), exactly as the original script does;
   3. the With 0 settings (fixed 128 steps = 32 per block, gen 128, block 32, temperature 0.5, prompt masks in
-     block 0, DiffuGuard preset `diffuguard` from DiffuGuard/configs/llada_dija.yaml);
+     block 0, fixed_rule="fastdllm" = the step rule of C's Without 0, DiffuGuard preset `diffuguard` from DiffuGuard/configs/llada_dija.yaml);
   4. reading tokens, NFE and the audit record from the return value (out, Stats).
 
 Two inputs:
@@ -63,8 +63,10 @@ def defense_settings():
 
 
 def with0_settings():
+    # fixed_rule="fastdllm": the step rule of C's Without 0 (float64 confidence, no extra random draw when the
+    # defense is off, Fast-dLLM sort selection). The default "diffuguard" rule is the GSM8K / RQ1 one.
     return dict(ASR_TASK, mode="fixed", threshold=None, cache=None, prompt_masks="first_block",
-                cache_start_block=0, **defense_settings())
+                cache_start_block=0, fixed_rule="fastdllm", **defense_settings())
     # columns A-E would be: mode="threshold", threshold=tau, steps unused, cache=None|"prefix"|"dual",
     # cache_start_block=1 (block 0 holds the prompt masks and always runs full forwards)
 
