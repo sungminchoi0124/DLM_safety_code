@@ -63,7 +63,7 @@ def vals(by, names, key):
 def per_set(by):
     out = {}
     for name, recs in by.items():
-        row = {"label": SETS[name][0], "n": len(recs),
+        row = {"label": recs[0]["label"], "n": len(recs),
                "prompt_tokens_p50": float(np.median([r["n_prompt"] for r in recs]))}
         for s in SCORES:
             v = np.array([r[s] for r in recs])

@@ -113,9 +113,9 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     names = [s for s in args.sets.split(",") if s]
-    bad = [s for s in names if s not in sets.SETS]
-    if bad:
-        raise SystemExit(f"unknown sets {bad}; choose from {list(sets.SETS)}")
+    bad = [s for s in names if s not in sets.SETS and not (Path(args.data_dir) / f"{s}.json").exists()]
+    if bad:   # extra sets (e.g. ProbeGate training sets) only need an item file in data_dir
+        raise SystemExit(f"unknown sets {bad}; choose from {list(sets.SETS)} or write <data_dir>/<set>.json")
     layers = tuple(int(x) for x in args.layers.split(",") if x)
     all_items = {n: sets.load_set(n, args.data_dir, args.limit) for n in names}
     rid = run_id(args)

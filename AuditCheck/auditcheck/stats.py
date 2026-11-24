@@ -84,4 +84,11 @@ def fit_logreg(X, y, l2=1.0, max_iter=200):
 
     opt.step(closure)
     w_, b_ = w.detach().numpy(), float(b.detach())
-    return lambda Z: ((np.asarray(Z, np.float64) - mu) / sd) @ w_ + b_
+    fn = lambda Z: ((np.asarray(Z, np.float64) - mu) / sd) @ w_ + b_  # noqa: E731
+    fn.params = {"mu": mu, "sd": sd, "w": w_, "b": b_}
+    return fn
+
+
+def logreg_score(params, Z):
+    """Score with saved fit_logreg parameters (the same formula as the returned function)."""
+    return ((np.asarray(Z, np.float64) - params["mu"]) / params["sd"]) @ params["w"] + float(params["b"])
